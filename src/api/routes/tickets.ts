@@ -7,6 +7,7 @@ import { getOrderById } from "../../db/repos/ordersRepo.js";
 import { sendError } from "../errorEnvelope.js";
 import type { ModelAdapter } from "../../adapters/modelAdapter.js";
 import { runTriage } from "../../services/triage.js";
+import { generateDraft } from "../../services/draft.js";
 
 // Factory rather than a module-level Router: the triage route needs a
 // ModelAdapter, and tests must be able to inject a MockModelAdapter with
@@ -119,6 +120,41 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
           sentiment: outcome.result.sentiment,
           should_escalate: outcome.result.should_escalate,
           reason_summary: outcome.result.reason_summary,
+          run_id: outcome.runId,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // LLD §4.7: 409 if not yet triaged (HLD invariant #9: triage → retrieval →
+  // draft). L3 fail-closed is NOT an HTTP error — 200 with the substituted
+  // template draft, since the flow degraded safely rather than failing.
+  ticketsRouter.post("/:id/draft-reply", async (req, res, next) => {
+    try {
+      const ticket = await getTicketById(req.params.id);
+      if (!ticket) {
+        sendError(res, "NOT_FOUND", `Ticket ${req.params.id} not found`);
+        return;
+      }
+      if (!ticket.triage) {
+        sendError(res, "CONFLICT", `Ticket ${req.params.id} must be triaged before drafting a reply`);
+        return;
+      }
+      const customer = await getCustomerById(ticket.customer_id);
+      const order = ticket.order_id ? await getOrderById(ticket.order_id) : null;
+
+      const outcome = await generateDraft(modelAdapter, ticket, customer!, order);
+
+      res.status(200).json({
+        data: {
+          draft_id: outcome.draftId,
+          ticket_id: ticket.ticket_id,
+          resolution_type: outcome.resolutionType,
+          body: outcome.body,
+          citations: outcome.citations,
+          recommended_actions: outcome.recommendedActions,
           run_id: outcome.runId,
         },
       });

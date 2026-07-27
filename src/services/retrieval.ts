@@ -23,3 +23,16 @@ export async function searchDocuments(
     audience: r.audience,
   }));
 }
+
+// websearch_to_tsquery ANDs bare words together (kbDocumentsRepo.ts) — right
+// for a short admin-typed query via GET /documents/search?q=, wrong for a
+// full multi-sentence ticket body: no single doc contains every word in it,
+// so an AND query over the whole ticket matches nothing. Callers that derive
+// their query from a long free-text document (DraftService, and later the
+// EvalRunner) should build their query text with this instead, which turns
+// it into an OR query so ranking — not membership — does the filtering.
+export function buildBroadQueryText(text: string): string {
+  const words = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  const unique = Array.from(new Set(words)).filter((w) => w.length > 2);
+  return unique.join(" or ");
+}

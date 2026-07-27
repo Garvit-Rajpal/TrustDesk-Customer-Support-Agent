@@ -62,7 +62,10 @@ export async function runTriage(
   // LLD §4.6: "zod parse (1 retry on parse failure, then run status: failed)".
   for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
     const response = await modelAdapter.complete({
-      scenario: ticket.ticket_id,
+      // Suffixed so a shared MockModelAdapter can serve both triage and
+      // draft calls for the same ticket without one queue's responses
+      // leaking into the other's call count.
+      scenario: `${ticket.ticket_id}:triage`,
       systemPrompt: TRIAGE_SYSTEM_PROMPT,
       userPrompt,
       responseFormat: "json",

@@ -38,7 +38,7 @@ describe("triage flow", () => {
 
   it("validates enums and persists a completed run + ticket.triage", async () => {
     const { ticket, customer, order } = await loadFixture("tkt_9001");
-    const adapter = new MockModelAdapter({ tkt_9001: { content: VALID_RESPONSE } });
+    const adapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_RESPONSE } });
 
     const outcome = await runTriage(adapter, ticket, customer, order);
 
@@ -62,25 +62,25 @@ describe("triage flow", () => {
   it("retries once on invalid model output, then succeeds", async () => {
     const { ticket, customer, order } = await loadFixture("tkt_9002");
     const adapter = new MockModelAdapter({
-      tkt_9002: [{ content: "not valid json" }, { content: VALID_RESPONSE }],
+      "tkt_9002:triage": [{ content: "not valid json" }, { content: VALID_RESPONSE }],
     });
 
     const outcome = await runTriage(adapter, ticket, customer, order);
 
     expect(outcome.status).toBe("completed");
-    expect(adapter.callCount("tkt_9002")).toBe(2);
+    expect(adapter.callCount("tkt_9002:triage")).toBe(2);
   });
 
   it("fails the run after a second invalid response (no infinite retry)", async () => {
     const { ticket, customer, order } = await loadFixture("tkt_9003");
     const adapter = new MockModelAdapter({
-      tkt_9003: [{ content: "not json" }, { content: '{"category":"not-a-real-category"}' }],
+      "tkt_9003:triage": [{ content: "not json" }, { content: '{"category":"not-a-real-category"}' }],
     });
 
     const outcome = await runTriage(adapter, ticket, customer, order);
 
     expect(outcome.status).toBe("failed");
-    expect(adapter.callCount("tkt_9003")).toBe(2);
+    expect(adapter.callCount("tkt_9003:triage")).toBe(2);
 
     if (outcome.status !== "failed") throw new Error("unreachable");
     const run = await getAgentRunById(outcome.runId);
@@ -102,7 +102,7 @@ describe("triage flow", () => {
       should_escalate: false,
       reason_summary: "Customer requested a coupon.",
     });
-    const adapter = new MockModelAdapter({ tkt_9006: { content: modelFooled } });
+    const adapter = new MockModelAdapter({ "tkt_9006:triage": { content: modelFooled } });
 
     const outcome = await runTriage(adapter, ticket, customer, order);
 
@@ -126,7 +126,7 @@ describe("triage flow", () => {
       should_escalate: false,
       reason_summary: "Customer asked a question.",
     });
-    const adapter = new MockModelAdapter({ tkt_9007: { content: modelFooled } });
+    const adapter = new MockModelAdapter({ "tkt_9007:triage": { content: modelFooled } });
 
     const outcome = await runTriage(adapter, ticket, customer, order);
     expect(outcome.status).toBe("completed");
@@ -136,7 +136,7 @@ describe("triage flow", () => {
 
   it("does not force escalation when no guardrail flag is set and the model says false", async () => {
     const { ticket, customer, order } = await loadFixture("tkt_9001");
-    const adapter = new MockModelAdapter({ tkt_9001: { content: VALID_RESPONSE } });
+    const adapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_RESPONSE } });
 
     const outcome = await runTriage(adapter, ticket, customer, order);
     expect(outcome.status).toBe("completed");
@@ -146,7 +146,7 @@ describe("triage flow", () => {
 
   it("writes a passed guardrail trace even on a fully clean ticket", async () => {
     const { ticket, customer, order } = await loadFixture("tkt_9001");
-    const adapter = new MockModelAdapter({ tkt_9001: { content: VALID_RESPONSE } });
+    const adapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_RESPONSE } });
 
     const outcome = await runTriage(adapter, ticket, customer, order);
     if (outcome.status !== "completed") throw new Error("unreachable");
@@ -158,7 +158,7 @@ describe("triage flow", () => {
   it("handles a ticket with no linked order", async () => {
     const ticket = await getTicketById("tkt_9001");
     const customer = await getCustomerById("cus_1001");
-    const adapter = new MockModelAdapter({ tkt_9001: { content: VALID_RESPONSE } });
+    const adapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_RESPONSE } });
 
     const outcome = await runTriage(adapter, ticket!, customer!, null);
     expect(outcome.status).toBe("completed");
