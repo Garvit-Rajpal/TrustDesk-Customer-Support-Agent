@@ -1,5 +1,6 @@
 import { pool } from "../pool.js";
 import { Ticket, SeedTicket } from "../../domain/entities.js";
+import type { TriageResult } from "../../domain/schemas.js";
 
 export async function upsertSeedTicket(ticket: SeedTicket): Promise<void> {
   await pool.query(
@@ -33,6 +34,16 @@ export async function getTicketById(ticketId: string): Promise<Ticket | null> {
   );
   if (rows.length === 0) return null;
   return Ticket.parse(rows[0]);
+}
+
+// LLD §4.6: triage result persisted on the ticket (latest result only, no
+// history table in v1). Only called after a successful classification —
+// a failed run leaves the ticket's prior triage state untouched.
+export async function updateTicketTriage(ticketId: string, triage: TriageResult): Promise<void> {
+  await pool.query(`UPDATE tickets SET triage = $2 WHERE ticket_id = $1`, [
+    ticketId,
+    JSON.stringify(triage),
+  ]);
 }
 
 export interface TicketFilters {
