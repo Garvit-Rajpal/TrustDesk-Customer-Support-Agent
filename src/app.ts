@@ -1,32 +1,38 @@
 import "./api/types.js";
-import express from "express";
+import express, { type Express } from "express";
 import { authRouter } from "./api/routes/auth.js";
 import { buildTicketsRouter } from "./api/routes/tickets.js";
 import { documentsRouter } from "./api/routes/documents.js";
 import { agentRunsRouter } from "./api/routes/agentRuns.js";
 import { toolActionsRouter } from "./api/routes/toolActions.js";
+import { buildEvalRunsRouter } from "./api/routes/evalRuns.js";
 import { authMiddleware } from "./api/middleware/auth.js";
 import { errorHandler } from "./api/middleware/errors.js";
+import type { ModelAdapter } from "./adapters/modelAdapter.js";
 import { MockModelAdapter } from "./adapters/mock.js";
 import { DEFAULT_MODEL_SCENARIOS } from "./adapters/defaultMockScenarios.js";
 
-export const app = express();
+// Single source of truth for route wiring, parameterized on the AI adapter
+// (ADR-3). server.ts uses this with createModelAdapter() (live OpenRouter
+// when configured, mock otherwise); the `app` export below always uses the
+// mock, so importing it — as every test does — can never reach OpenRouter
+// regardless of a developer's .env (LLD §1 invariant).
+export function buildApp(modelAdapter: ModelAdapter): Express {
+  const app = express();
 
-// Default AI adapter for the running app until OpenRouterAdapter lands
-// (milestone 9, ADR-3). Swapping to the live adapter is a one-line change
-// here — nothing else in the app imports an AI HTTP client.
-const defaultModelAdapter = new MockModelAdapter(DEFAULT_MODEL_SCENARIOS);
+  app.use(express.json());
+  app.use("/auth", authRouter);
 
-app.use(express.json());
-app.use("/auth", authRouter);
+  // ADR-4: every route below requires a valid JWT.
+  app.use("/tickets", authMiddleware, buildTicketsRouter(modelAdapter));
+  app.use("/documents", authMiddleware, documentsRouter);
+  app.use("/agent-runs", authMiddleware, agentRunsRouter);
+  app.use("/tool-actions", authMiddleware, toolActionsRouter);
+  app.use("/eval-runs", authMiddleware, buildEvalRunsRouter(modelAdapter));
 
-// ADR-4: every route below requires a valid JWT.
-app.use("/tickets", authMiddleware, buildTicketsRouter(defaultModelAdapter));
-app.use("/documents", authMiddleware, documentsRouter);
-app.use("/agent-runs", authMiddleware, agentRunsRouter);
-app.use("/tool-actions", authMiddleware, toolActionsRouter);
+  app.use(errorHandler);
 
-// Business routers (eval-runs) land in later milestones (LLD §9) and are
-// mounted here as they're built.
+  return app;
+}
 
-app.use(errorHandler);
+export const app = buildApp(new MockModelAdapter(DEFAULT_MODEL_SCENARIOS));
