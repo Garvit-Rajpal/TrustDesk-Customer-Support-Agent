@@ -35,10 +35,61 @@ export async function getTicketById(ticketId: string): Promise<Ticket | null> {
   return Ticket.parse(rows[0]);
 }
 
-export async function listTickets(): Promise<Ticket[]> {
+export interface TicketFilters {
+  status?: string;
+  category?: string;
+}
+
+// category filters on triage->>'category' (LLD §4.4: "GET /tickets?status=&category=").
+// Untriaged tickets never match a category filter — triage is null until run.
+export async function listTickets(filters: TicketFilters = {}): Promise<Ticket[]> {
+  const conditions: string[] = [];
+  const params: string[] = [];
+
+  if (filters.status) {
+    params.push(filters.status);
+    conditions.push(`status = $${params.length}`);
+  }
+  if (filters.category) {
+    params.push(filters.category);
+    conditions.push(`triage->>'category' = $${params.length}`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const { rows } = await pool.query(
     `SELECT ticket_id, customer_id, order_id, channel, subject, body, status, created_at::text, triage
-     FROM tickets ORDER BY created_at`
+     FROM tickets ${where} ORDER BY created_at`,
+    params
   );
   return rows.map((row) => Ticket.parse(row));
+}
+
+export interface NewTicketInput {
+  ticket_id: string;
+  customer_id: string;
+  order_id: string | null;
+  channel: string;
+  subject: string;
+  body: string;
+  created_at: string;
+}
+
+// Demo ticket creation (ADR-5). body is stored exactly as given — never
+// trimmed or otherwise mutated (HLD invariant #8).
+export async function insertTicket(ticket: NewTicketInput): Promise<Ticket> {
+  const { rows } = await pool.query(
+    `INSERT INTO tickets (ticket_id, customer_id, order_id, channel, subject, body, status, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 'open', $7)
+     RETURNING ticket_id, customer_id, order_id, channel, subject, body, status, created_at::text, triage`,
+    [
+      ticket.ticket_id,
+      ticket.customer_id,
+      ticket.order_id,
+      ticket.channel,
+      ticket.subject,
+      ticket.body,
+      ticket.created_at,
+    ]
+  );
+  return Ticket.parse(rows[0]);
 }

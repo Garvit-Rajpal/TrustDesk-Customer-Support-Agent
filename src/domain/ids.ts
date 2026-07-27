@@ -8,3 +8,8 @@ export const newApprovalId = () => `apr_${nanoid()}`;
 export const newRunId = () => `run_${nanoid()}`;
 export const newDraftId = () => `draft_${nanoid()}`;
 export const newEvalRunId = () => `eval_run_${nanoid()}`;
+// Not in CLAUDE.md's explicit prefix list, but POST /tickets (ADR-5) creates
+// demo tickets at runtime and needs an ID shaped like the seed convention
+// (tkt_9001) without colliding with seed IDs (nanoid suffix, not numeric).
+export const newTicketId = () => `tkt_${nanoid()}`;
+
