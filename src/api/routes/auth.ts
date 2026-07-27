@@ -1,0 +1,42 @@
+import { Router } from "express";
+import bcrypt from "bcrypt";
+import { LoginRequest } from "../../domain/authTypes.js";
+import { getUserByUsername } from "../../db/repos/usersRepo.js";
+import { signToken } from "../../services/tokens.js";
+import { sendError } from "../errorEnvelope.js";
+
+export const authRouter = Router();
+
+// LLD §4.1: verify credentials against bcrypt hash, issue short-lived JWT.
+// No signup endpoint exists (ADR-4) — accounts only via seed/bootstrap.
+authRouter.post("/login", async (req, res, next) => {
+  try {
+    const parsed = LoginRequest.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, "VALIDATION_ERROR", "username and password are required", parsed.error.flatten());
+      return;
+    }
+
+    const user = await getUserByUsername(parsed.data.username);
+    if (!user) {
+      sendError(res, "UNAUTHENTICATED", "Invalid username or password");
+      return;
+    }
+
+    const passwordOk = await bcrypt.compare(parsed.data.password, user.password_hash);
+    if (!passwordOk) {
+      sendError(res, "UNAUTHENTICATED", "Invalid username or password");
+      return;
+    }
+
+    const token = signToken({ sub: user.user_id, name: user.display_name, role: user.role });
+    res.status(200).json({
+      data: {
+        token,
+        user: { user_id: user.user_id, display_name: user.display_name },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});

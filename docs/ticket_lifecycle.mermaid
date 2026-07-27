@@ -1,0 +1,33 @@
+flowchart TD
+    A[Ticket received / opened from seed] --> B[Guardrail L1: input scan on ticket body]
+    B -->|flags: injection / secret-ask / bypass-ask| B2[Set escalation-forcing flags]
+    B --> C[Triage: LLM rubric prompt<br/>ticket + customer + order context only]
+    B2 --> C
+    C --> C2{zod enum<br/>validation}
+    C2 -->|invalid| C3[Retry once, then fail run] --> C
+    C2 -->|valid| C4[Deterministic overrides:<br/>injection flag forces should_escalate=true]
+    C4 --> T1[(agent_run trace #1:<br/>triage, guardrail_results, status)]
+    C4 --> D[Retrieval: Postgres FTS over KB docs<br/>filtered/boosted by triage category]
+    D --> E[EligibilityService: code computes<br/>ticket.created_at vs order.eligible_return_until<br/>warranty window, etc. No LLM date math]
+    E --> F[Draft generation: LLM prompt with<br/>docs + ticket in delimited DATA blocks<br/>Guardrail L2 + eligibility facts injected]
+    F --> G[Guardrail L3: output scan<br/>citations subset of retrieved IDs<br/>no internal-doc content in body<br/>no secrets/PII<br/>actions valid per catalog+category]
+    G -->|fail| G2[Discard model draft - fail closed<br/>substitute deterministic template draft<br/>rejected draft kept on trace, flagged]
+    G -->|pass| H[Draft saved with resolution_type:<br/>answered / refused_by_policy / escalated<br/>+ citations + recommended_actions]
+    G2 --> H
+    H --> T2[(agent_run trace #2:<br/>draft, retrieved_doc_ids,<br/>tool_calls, guardrail_results)]
+    H --> I{resolution_type}
+    I -->|escalated| J[Route to human queue - end of AI flow]
+    I -->|refused_by_policy| K[Agent reviews & sends policy-grounded refusal]
+    I -->|answered, action recommended| L[POST /tool-actions<br/>catalog validation: tool exists, fields,<br/>category allowed, amount limits<br/>idempotency_key: tkt-tool-n UNIQUE]
+    L --> M{requires_human_approval<br/>from CATALOG, never from model}
+    M -->|no e.g. open_carrier_investigation| O[status: approved auto]
+    M -->|yes e.g. create_replacement_order| N[status: approval_required<br/>persisted, async - no blocking wait]
+    N --> P{Human decision via<br/>POST /approve or /reject}
+    P -->|approved + reviewer_id + reason| O
+    P -->|rejected + reviewer_id + reason| Q[status: rejected - terminal<br/>Approval record stored<br/>Ticket stays with human agent<br/>no auto-retry, no auto customer rejection]
+    O --> R[POST /execute:<br/>re-validate eligibility - defense in depth<br/>idempotent replay if key seen before]
+    R -->|success| S[status: executed, result stored]
+    R -->|failure| S2[status: failed, error stored]
+    S --> U[Agent sends reply to customer<br/>draft references executed action]
+    S2 --> U2[Agent handles manually]
+    Q --> U2

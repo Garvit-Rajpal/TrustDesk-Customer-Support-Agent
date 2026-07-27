@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: trustdesk
+      POSTGRES_PASSWORD: trustdesk
+      POSTGRES_DB: trustdesk
+    ports:
+      - "5432:5432"
+    volumes:
+      - trustdesk_pg_data:/var/lib/postgresql/data
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql
+
+volumes:
+  trustdesk_pg_data:
