@@ -1,0 +1,30 @@
+flowchart TD
+    A[Ticket opened - status: open<br/>first inbound message in thread] --> B[Guardrail L1: input scan<br/>runs on EVERY inbound message]
+    B --> C[Triage - re-runnable per inbound msg<br/>latest triage governs tool allowability]
+    C --> T1[(agent_run + run_events<br/>SSE stepper: live + replay)]
+    C --> D[Retrieval - org-scoped FTS<br/>filtered by triage category]
+    D --> E[Eligibility facts - code, not LLM<br/>ticket.created_at vs policy windows]
+    E --> F[Draft generation targets latest inbound msg<br/>context: thread history, each msg fenced<br/>as untrusted data + facts + docs]
+    F --> G[Guardrail L3: output scan<br/>+ org-aware unrelated-customer check]
+    G -->|fail| G2[Fail closed: template draft substituted<br/>rejected output kept, manager-visible only]
+    G -->|pass| H[Draft saved: resolution_type + citations<br/>+ catalog-validated recommended actions]
+    G2 --> H
+    H --> T2[(agent_run + run_events)]
+    H --> I{Action recommended?}
+    I -->|yes| L[POST /tool-actions<br/>catalog validation + idempotency key]
+    L --> M{requires_human_approval<br/>from catalog}
+    M -->|yes| N[approval_required] --> P{Manager decision - RBAC}
+    P -->|approve| O[approved]
+    P -->|reject| Q[rejected - terminal<br/>agent handles manually]
+    M -->|no| O
+    O --> R[Execute: re-validate + idempotent replay<br/>executed or failed]
+    I -->|no| S[Agent reviews draft]
+    R --> S
+    Q --> S
+    S --> U[POST /drafts/:id/send<br/>outbound message appended, draft: sent<br/>ticket: awaiting_customer]
+    U --> V{Customer replies?<br/>simulate-inbound in v2<br/>real channel in v3}
+    V -->|yes - status: customer_replied| B
+    V -->|no| W[Agent resolves - status: resolved]
+    W --> X{Customer replies after resolve?}
+    X -->|yes - reopened: customer_replied| B
+    X -->|no| Y[Closed - lifecycle ends<br/>feedback ratings feed quality dashboard]

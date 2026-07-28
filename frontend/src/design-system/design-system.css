@@ -1,0 +1,219 @@
+/* V2-1 design system (LLD_v2 §8): shell, StatusBadge, DataTable, RunStepper. */
+
+body {
+  background: var(--ds-bg);
+  color: var(--ds-text);
+}
+
+.ds-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.ds-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--ds-sidebar-bg);
+  color: var(--ds-sidebar-text);
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0.75rem;
+}
+
+.ds-sidebar-brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  padding: 0.5rem 0.5rem 1.25rem;
+}
+
+.ds-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.ds-sidebar-link {
+  all: unset;
+  cursor: pointer;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-sidebar-text-muted);
+  font-size: 0.9rem;
+}
+
+.ds-sidebar-link:hover {
+  background: var(--ds-sidebar-active-bg);
+  color: var(--ds-sidebar-text);
+}
+
+.ds-sidebar-link--active {
+  background: var(--ds-sidebar-active-bg);
+  color: var(--ds-sidebar-text);
+  font-weight: 600;
+}
+
+.ds-shell-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--ds-surface);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.ds-topbar-org {
+  font-size: 0.85rem;
+  color: var(--ds-text-muted);
+}
+
+.ds-topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ds-topbar-user {
+  font-size: 0.9rem;
+  color: var(--ds-text-muted);
+}
+
+.ds-shell-content {
+  flex: 1;
+  padding: 1.5rem;
+  max-width: 1100px;
+}
+
+/* StatusBadge */
+.ds-status-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+
+.ds-status-badge--neutral {
+  background: var(--ds-status-neutral-bg);
+  color: var(--ds-status-neutral-fg);
+}
+.ds-status-badge--info {
+  background: var(--ds-status-info-bg);
+  color: var(--ds-status-info-fg);
+}
+.ds-status-badge--success {
+  background: var(--ds-status-success-bg);
+  color: var(--ds-status-success-fg);
+}
+.ds-status-badge--warning {
+  background: var(--ds-status-warning-bg);
+  color: var(--ds-status-warning-fg);
+}
+.ds-status-badge--danger {
+  background: var(--ds-status-danger-bg);
+  color: var(--ds-status-danger-fg);
+}
+
+/* DataTable */
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  overflow: hidden;
+}
+
+.ds-table th,
+.ds-table td {
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--ds-border);
+  font-size: 0.9rem;
+}
+
+.ds-table th {
+  color: var(--ds-text-muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ds-table-row--clickable {
+  cursor: pointer;
+}
+
+.ds-table-row--clickable:hover {
+  background: var(--ds-status-info-bg);
+}
+
+/* RunStepper */
+.ds-run-stepper {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+}
+
+.ds-run-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 84px;
+  position: relative;
+}
+
+.ds-run-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: calc(50% + 18px);
+  width: calc(100% - 36px);
+  height: 2px;
+  background: var(--ds-border);
+}
+
+.ds-run-step-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--ds-status-neutral-bg);
+  color: var(--ds-status-neutral-fg);
+  z-index: 1;
+}
+
+.ds-run-step--completed .ds-run-step-dot {
+  background: var(--ds-status-success-bg);
+  color: var(--ds-status-success-fg);
+}
+.ds-run-step--started .ds-run-step-dot {
+  background: var(--ds-status-info-bg);
+  color: var(--ds-status-info-fg);
+}
+.ds-run-step--blocked .ds-run-step-dot,
+.ds-run-step--failed .ds-run-step-dot {
+  background: var(--ds-status-danger-bg);
+  color: var(--ds-status-danger-fg);
+}
+
+.ds-run-step-label {
+  font-size: 0.72rem;
+  color: var(--ds-text-muted);
+  text-align: center;
+}

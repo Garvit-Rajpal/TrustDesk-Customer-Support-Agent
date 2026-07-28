@@ -17,6 +17,7 @@ import { getKbDocumentById, listKbDocuments } from "../db/repos/kbDocumentsRepo.
 import { listToolCatalog } from "../db/repos/toolCatalogRepo.js";
 import { insertDraft } from "../db/repos/draftsRepo.js";
 import { insertAgentRun } from "../db/repos/agentRunsRepo.js";
+import { pipelineEventBus } from "./events/pipelineEventBus.js";
 
 const STANDARD_AUDIENCE = "Customer support agents";
 
@@ -60,6 +61,23 @@ export async function generateDraft(
   // untyped jsonb.
   const triage = TriageResult.parse(ticket.triage);
 
+  // Stage order below follows ADR-8's pipeline (input_scan → retrieval →
+  // eligibility → draft_generation → output_scan); none of these steps
+  // actually depend on one another's output, so ordering them this way is
+  // free and makes the emitted event sequence match the documented pipeline.
+  await pipelineEventBus.emitStage(runId, "input_scan", "started");
+  const l1Results = inputScan(ticket.subject, ticket.body);
+  const flags = {
+    injectionFlag: l1Results.find((r) => r.check === "injection_phrase")?.passed === false,
+    secretExtractionFlag: l1Results.find((r) => r.check === "secret_extraction")?.passed === false,
+    verificationBypassFlag: l1Results.find((r) => r.check === "verification_bypass")?.passed === false,
+  };
+  const l1FailedCount = l1Results.filter((r) => !r.passed).length;
+  await pipelineEventBus.emitStage(runId, "input_scan", "completed", {
+    counts: { passed: l1Results.length - l1FailedCount, failed: l1FailedCount },
+  });
+
+  await pipelineEventBus.emitStage(runId, "retrieval", "started");
   const searchResults = await searchDocuments(
     buildBroadQueryText(`${ticket.subject} ${ticket.body}`),
     triage.category
@@ -68,15 +86,14 @@ export async function generateDraft(
   const retrievedDocs = (
     await Promise.all(retrievedDocIds.map((id) => getKbDocumentById(id)))
   ).filter((d): d is NonNullable<typeof d> => d !== null);
+  await pipelineEventBus.emitStage(runId, "retrieval", "completed", {
+    doc_ids: retrievedDocIds,
+    counts: { documents: retrievedDocIds.length },
+  });
 
+  await pipelineEventBus.emitStage(runId, "eligibility", "started");
   const facts = computeEligibilityFacts(ticket.created_at, order, customer);
-
-  const l1Results = inputScan(ticket.subject, ticket.body);
-  const flags = {
-    injectionFlag: l1Results.find((r) => r.check === "injection_phrase")?.passed === false,
-    secretExtractionFlag: l1Results.find((r) => r.check === "secret_extraction")?.passed === false,
-    verificationBypassFlag: l1Results.find((r) => r.check === "verification_bypass")?.passed === false,
-  };
+  await pipelineEventBus.emitStage(runId, "eligibility", "completed");
 
   const toolCatalog = await listToolCatalog();
 
@@ -93,6 +110,8 @@ export async function generateDraft(
   let modelName = "";
   let parsed: RawDraftOutput | null = null;
 
+  await pipelineEventBus.emitStage(runId, "draft_generation", "started");
+
   // Same one-retry pattern as TriageService (LLD §4.6) — not explicitly
   // specified for draft in LLD §4.7, but there's no reason draft output
   // should be less resilient to a single malformed response than triage.
@@ -108,6 +127,13 @@ export async function generateDraft(
     modelName = response.model;
     parsed = tryParseDraft(raw);
   }
+
+  await pipelineEventBus.emitStage(
+    runId,
+    "draft_generation",
+    parsed ? "completed" : "failed",
+    parsed ? { resolution_type: parsed.resolution_type } : {}
+  );
 
   const allKbDocs = await listKbDocuments();
   const internalAudienceDocs = allKbDocs
@@ -134,6 +160,7 @@ export async function generateDraft(
     rejectedOutput = raw;
     l3Results = [];
   } else {
+    await pipelineEventBus.emitStage(runId, "output_scan", "started");
     const scan = outputScan(parsed, {
       retrievedDocIds,
       internalAudienceDocs,
@@ -143,6 +170,10 @@ export async function generateDraft(
       toolCatalog,
     });
     l3Results = scan.results;
+    const l3FailedCount = l3Results.filter((r) => !r.passed).length;
+    await pipelineEventBus.emitStage(runId, "output_scan", scan.passed ? "completed" : "blocked", {
+      counts: { passed: l3Results.length - l3FailedCount, failed: l3FailedCount },
+    });
 
     if (!scan.passed) {
       status = "guardrail_blocked";

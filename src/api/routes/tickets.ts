@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { CreateTicketRequest } from "../../domain/ticketTypes.js";
 import { newTicketId } from "../../domain/ids.js";
 import { getTicketById, listTickets, insertTicket } from "../../db/repos/ticketsRepo.js";
@@ -8,6 +8,10 @@ import { sendError } from "../errorEnvelope.js";
 import type { ModelAdapter } from "../../adapters/modelAdapter.js";
 import { runTriage } from "../../services/triage.js";
 import { generateDraft } from "../../services/draft.js";
+import { getAgentRunById } from "../../db/repos/agentRunsRepo.js";
+import { listRunEventsByRunId } from "../../db/repos/runEventsRepo.js";
+import { isTerminalEvent, pipelineEventBus } from "../../services/events/pipelineEventBus.js";
+import type { RunEvent } from "../../domain/schemas.js";
 
 // Factory rather than a module-level Router: the triage route needs a
 // ModelAdapter, and tests must be able to inject a MockModelAdapter with
@@ -163,5 +167,67 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
     }
   });
 
+  // V2-1 (LLD_v2 §2, ADR-8): SSE pipeline visibility. Replays persisted
+  // run_events first (identical shape for a historical or a still-running
+  // run), then — if the run hasn't reached a terminal stage yet — subscribes
+  // to the in-process PipelineEventBus and streams further events live,
+  // closing once a terminal event arrives. In practice triage/draft finish
+  // synchronously before their POST response returns (HLD invariant #6), so
+  // a client only ever sees the replay path; the live path exists for
+  // concurrent viewers that open the stream while a run is still executing.
+  ticketsRouter.get("/:id/runs/:runId/events", async (req, res, next) => {
+    try {
+      const ticket = await getTicketById(req.params.id);
+      if (!ticket) {
+        sendError(res, "NOT_FOUND", `Ticket ${req.params.id} not found`);
+        return;
+      }
+
+      const run = await getAgentRunById(req.params.runId);
+      if (run && run.ticket_id !== ticket.ticket_id) {
+        sendError(res, "NOT_FOUND", `Run ${req.params.runId} not found for ticket ${ticket.ticket_id}`);
+        return;
+      }
+
+      const persisted = await listRunEventsByRunId(req.params.runId);
+      if (!run && persisted.length === 0) {
+        sendError(res, "NOT_FOUND", `Run ${req.params.runId} not found`);
+        return;
+      }
+
+      res.status(200);
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      for (const event of persisted) {
+        writeSseEvent(res, event.stage, event.status, event.summary, event.created_at);
+      }
+
+      if (run) {
+        // Run already finished (agent_runs row exists) — nothing more will
+        // ever be emitted for this run_id.
+        res.end();
+        return;
+      }
+
+      const unsubscribe = pipelineEventBus.subscribe(req.params.runId, (event: RunEvent) => {
+        writeSseEvent(res, event.stage, event.status, event.summary, event.ts);
+        if (isTerminalEvent(event)) {
+          unsubscribe();
+          res.end();
+        }
+      });
+      req.on("close", unsubscribe);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return ticketsRouter;
+}
+
+function writeSseEvent(res: Response, stage: string, status: string, summary: unknown, ts: string): void {
+  res.write(`data: ${JSON.stringify({ stage, status, summary, ts })}\n\n`);
 }

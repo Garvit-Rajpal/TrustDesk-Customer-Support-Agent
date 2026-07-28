@@ -81,6 +81,46 @@ export const GuardrailResult = z.object({
 });
 export type GuardrailResult = z.infer<typeof GuardrailResult>;
 
+// V2-1 (LLD_v2 §1/§2, ADR-8): the six pipeline stages any run passes
+// through; a given run only emits events for the stages it actually
+// executes (e.g. a triage run never reaches retrieval).
+export const PipelineStage = z.enum([
+  "input_scan",
+  "triage",
+  "retrieval",
+  "eligibility",
+  "draft_generation",
+  "output_scan",
+]);
+export type PipelineStage = z.infer<typeof PipelineStage>;
+
+export const PipelineEventStatus = z.enum(["started", "completed", "failed", "blocked"]);
+export type PipelineEventStatus = z.infer<typeof PipelineEventStatus>;
+
+// Redacted, allowlisted payload only (LLD_v2 §2 redaction contract) — see
+// redactSummary(), the single gate that enforces this shape at runtime.
+export const EventSummary = z
+  .object({
+    doc_ids: z.array(z.string()).optional(),
+    check: z.string().optional(),
+    passed: z.boolean().optional(),
+    category: z.string().optional(),
+    resolution_type: z.string().optional(),
+    counts: z.record(z.string(), z.number()).optional(),
+    durations: z.record(z.string(), z.number()).optional(),
+  })
+  .strict();
+export type EventSummary = z.infer<typeof EventSummary>;
+
+export const RunEvent = z.object({
+  run_id: z.string(),
+  stage: PipelineStage,
+  status: PipelineEventStatus,
+  summary: EventSummary,
+  ts: z.string(),
+});
+export type RunEvent = z.infer<typeof RunEvent>;
+
 export const EligibilityFacts = z.object({
   return_window_eligible: z.boolean().nullable(),
   warranty_active: z.boolean().nullable(),

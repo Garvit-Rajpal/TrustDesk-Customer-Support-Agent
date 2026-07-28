@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type DraftResult, type TicketDetail, type TriageResult } from "../api.js";
 import { ActionPanel } from "./ActionPanel.js";
 import { TracePanel } from "./TracePanel.js";
+import { RunStepper } from "./RunStepper.js";
 
 type TriageDisplay = Pick<
   TriageResult,
@@ -130,6 +131,7 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
               </tr>
             </tbody>
           </table>
+          <RunStepper ticketId={ticketId} runId={triageRunId} />
           <TracePanel runId={triageRunId} />
         </section>
       )}
@@ -139,6 +141,7 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
           <h3>Draft reply — {draft.resolution_type}</h3>
           <p className="draft-body">{draft.body}</p>
           <p className="muted">Citations: {draft.citations.length > 0 ? draft.citations.join(", ") : "none"}</p>
+          <RunStepper ticketId={ticketId} runId={draft.run_id} />
           <TracePanel runId={draft.run_id} />
 
           {draft.recommended_actions.length === 0 && <p className="muted">No recommended actions.</p>}

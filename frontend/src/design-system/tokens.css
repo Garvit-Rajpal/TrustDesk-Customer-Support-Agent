@@ -1,0 +1,33 @@
+/* V2-1 design system (LLD_v2 §8, ADR-13): tokens every v2 view builds on.
+   Neutral surface palette + a status color scale that StatusBadge maps
+   every domain enum (priority, ticket status, run status, guardrail
+   pass/fail) onto — see StatusBadge.tsx for the mapping table. */
+:root {
+  --ds-bg: #f4f5f7;
+  --ds-surface: #ffffff;
+  --ds-border: #e3e5ea;
+  --ds-text: #16181d;
+  --ds-text-muted: #676c76;
+  --ds-accent: #2563eb;
+  --ds-accent-contrast: #ffffff;
+  --ds-radius-sm: 4px;
+  --ds-radius-md: 8px;
+  --ds-radius-lg: 12px;
+
+  --ds-sidebar-bg: #14161c;
+  --ds-sidebar-text: #e7e8ea;
+  --ds-sidebar-text-muted: #9599a3;
+  --ds-sidebar-active-bg: #23262f;
+
+  /* Status scale — five semantic buckets every enum in the app maps onto. */
+  --ds-status-neutral-bg: #eceef1;
+  --ds-status-neutral-fg: #40454f;
+  --ds-status-info-bg: #dbeafe;
+  --ds-status-info-fg: #1d4ed8;
+  --ds-status-success-bg: #dcfce7;
+  --ds-status-success-fg: #15803d;
+  --ds-status-warning-bg: #fef3c7;
+  --ds-status-warning-fg: #92400e;
+  --ds-status-danger-bg: #fee2e2;
+  --ds-status-danger-fg: #b91c1c;
+}

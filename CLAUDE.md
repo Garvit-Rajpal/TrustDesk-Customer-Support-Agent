@@ -4,10 +4,13 @@ AI support-operations capstone. All design decisions are already made — do not
 
 ## Read before any work
 
-1. `docs/HLD.md` — architecture, ADRs, the four lifecycles, guardrail layers
-2. `docs/LLD.md` — DB schemas, zod domain types, API contracts, guardrail rules, prompt templates, build order
-3. `docs/ticket_lifecycle.mermaid` — end-to-end flow
-4. Requirements source of truth: `../Airtribe_Project_requirements_Repo/trustdesk-capstone/` (problem statement, seed data in `data/`, eval cases)
+1. `docs/HLD.md` — v1 architecture, ADRs 1–7, the four lifecycles, guardrail layers
+2. `docs/LLD.md` — v1 DB schemas, zod domain types, API contracts, guardrail rules, prompt templates
+3. `docs/HLD_v2.md` + `docs/LLD_v2.md` — v2 product extension (ADRs 8–13): pipeline visibility SSE, RBAC, feedback, threaded tickets, multi-tenancy, model tiers, design system. Delta docs — v1 remains valid where not amended.
+4. `docs/ticket_lifecycle.mermaid` (v1) and `docs/ticket_lifecycle_v2.mermaid` (current)
+5. Requirements source of truth: `../Airtribe_Project_requirements_Repo/trustdesk-capstone/` (problem statement, seed data in `data/`, eval cases)
+
+**Current phase:** v2 milestones (LLD_v2 §9, order V2-1 → V2-6). Standing rule: the full v1 test suite, including eval_005/006/007 adversarial tests, must be green at the end of every v2 milestone.
 
 ## Stack
 

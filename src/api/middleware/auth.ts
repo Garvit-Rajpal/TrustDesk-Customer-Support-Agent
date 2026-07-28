@@ -7,7 +7,13 @@ import { sendError } from "../errorEnvelope.js";
 // middleware only ever protects internal agent/manager routes.
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   const header = req.header("authorization");
-  const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : undefined;
+  const headerToken = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : undefined;
+  // Browser EventSource (ADR-8's SSE mechanism) cannot set custom headers,
+  // so the RunStepper's live/replay stream is the one caller allowed to
+  // authenticate via ?token= instead. Every other route still requires the
+  // Authorization header.
+  const queryToken = typeof req.query.token === "string" ? req.query.token : undefined;
+  const token = headerToken ?? queryToken;
 
   if (!token) {
     sendError(res, "UNAUTHENTICATED", "Missing bearer token");

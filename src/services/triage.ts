@@ -10,6 +10,7 @@ import { inputScan } from "./guardrails/inputScan.js";
 import { TRIAGE_SYSTEM_PROMPT, buildTriageUserPrompt } from "./prompts/triage.v1.js";
 import { insertAgentRun } from "../db/repos/agentRunsRepo.js";
 import { updateTicketTriage } from "../db/repos/ticketsRepo.js";
+import { pipelineEventBus } from "./events/pipelineEventBus.js";
 
 export type TriageOutcome =
   | { status: "completed"; result: TriageResult; runId: string }
@@ -35,12 +36,17 @@ export async function runTriage(
   const startedAt = Date.now();
   const runId = newRunId();
 
+  await pipelineEventBus.emitStage(runId, "input_scan", "started");
   const l1Results = inputScan(ticket.subject, ticket.body);
   const flags = {
     injectionFlag: l1Results.find((r) => r.check === "injection_phrase")?.passed === false,
     secretExtractionFlag: l1Results.find((r) => r.check === "secret_extraction")?.passed === false,
     verificationBypassFlag: l1Results.find((r) => r.check === "verification_bypass")?.passed === false,
   };
+  const l1FailedCount = l1Results.filter((r) => !r.passed).length;
+  await pipelineEventBus.emitStage(runId, "input_scan", "completed", {
+    counts: { passed: l1Results.length - l1FailedCount, failed: l1FailedCount },
+  });
 
   // L2 is structural (fenced blocks, always applied by construction — see
   // triage.v1.ts) rather than a detector, so it always logs a pass. Still
@@ -58,6 +64,8 @@ export async function runTriage(
   let modelProvider = "";
   let modelName = "";
   let parsed: TriageResult | null = null;
+
+  await pipelineEventBus.emitStage(runId, "triage", "started");
 
   // LLD §4.6: "zod parse (1 retry on parse failure, then run status: failed)".
   for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
@@ -80,6 +88,7 @@ export async function runTriage(
   const latencyMs = Date.now() - startedAt;
 
   if (!parsed) {
+    await pipelineEventBus.emitStage(runId, "triage", "failed");
     await insertAgentRun({
       run_id: runId,
       ticket_id: ticket.ticket_id,
@@ -103,6 +112,7 @@ export async function runTriage(
   const anyFlag = flags.injectionFlag || flags.secretExtractionFlag || flags.verificationBypassFlag;
   const result: TriageResult = anyFlag ? { ...parsed, should_escalate: true } : parsed;
 
+  await pipelineEventBus.emitStage(runId, "triage", "completed", { category: result.category });
   await updateTicketTriage(ticket.ticket_id, result);
   await insertAgentRun({
     run_id: runId,

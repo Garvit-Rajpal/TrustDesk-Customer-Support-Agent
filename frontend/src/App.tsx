@@ -5,6 +5,7 @@ import { Queue } from "./components/Queue.js";
 import { TicketView } from "./components/TicketView.js";
 import { EvalReport } from "./components/EvalReport.js";
 import { Documents } from "./components/Documents.js";
+import { Shell, type NavItem } from "./design-system/Shell.js";
 
 type View =
   | { name: "queue" }
@@ -26,39 +27,35 @@ export default function App() {
     setView({ name: "queue" });
   }
 
-  return (
-    <div className="app-shell">
-      <header className="app-header">
-        <h1>TrustDesk</h1>
-        <nav>
-          <button className="link-button" onClick={() => setView({ name: "queue" })}>
-            Ticket queue
-          </button>
-          <button className="link-button" onClick={() => setView({ name: "documents" })}>
-            Documents
-          </button>
-          <button className="link-button" onClick={() => setView({ name: "eval" })}>
-            Eval report
-          </button>
-        </nav>
-        <div className="header-right">
-          <span className="muted">{displayName}</span>
-          <button className="link-button" onClick={handleLogout}>
-            Log out
-          </button>
-        </div>
-      </header>
+  const navItems: NavItem[] = [
+    {
+      key: "queue",
+      label: "Ticket queue",
+      active: view.name === "queue" || view.name === "ticket",
+      onClick: () => setView({ name: "queue" }),
+    },
+    {
+      key: "documents",
+      label: "Documents",
+      active: view.name === "documents",
+      onClick: () => setView({ name: "documents" }),
+    },
+    {
+      key: "eval",
+      label: "Eval report",
+      active: view.name === "eval",
+      onClick: () => setView({ name: "eval" }),
+    },
+  ];
 
-      <main>
-        {view.name === "queue" && (
-          <Queue onSelect={(ticketId) => setView({ name: "ticket", ticketId })} />
-        )}
-        {view.name === "ticket" && (
-          <TicketView ticketId={view.ticketId} onBack={() => setView({ name: "queue" })} />
-        )}
-        {view.name === "documents" && <Documents />}
-        {view.name === "eval" && <EvalReport />}
-      </main>
-    </div>
+  return (
+    <Shell navItems={navItems} displayName={displayName} onLogout={handleLogout}>
+      {view.name === "queue" && <Queue onSelect={(ticketId) => setView({ name: "ticket", ticketId })} />}
+      {view.name === "ticket" && (
+        <TicketView ticketId={view.ticketId} onBack={() => setView({ name: "queue" })} />
+      )}
+      {view.name === "documents" && <Documents />}
+      {view.name === "eval" && <EvalReport />}
+    </Shell>
   );
 }
