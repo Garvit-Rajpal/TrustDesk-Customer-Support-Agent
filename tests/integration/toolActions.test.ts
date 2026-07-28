@@ -1,6 +1,13 @@
 // Milestone 7 (LLD §9): tool actions — validation ladder, state machine
 // illegal transitions, idempotent replay, re-validation at execute.
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+//
+// Full reset before EVERY test, not once per file: the "one active action
+// per ticket" rule means tests that approve/auto-approve an action on a
+// shared seed ticket (e.g. tkt_9001) now leave state that would block a
+// later, unrelated test targeting the same ticket. Per-test isolation
+// costs some wall-clock time but is what actually keeps these tests
+// independent of execution order.
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { pool, truncateAll } from "../../src/db/pool.js";
 import { runSeed } from "../../src/db/seed.js";
 import { getTicketById, updateTicketTriage, insertTicket } from "../../src/db/repos/ticketsRepo.js";
@@ -23,7 +30,7 @@ async function triagedTicket(ticketId: string, category: string) {
 // seeded user id, not an arbitrary string.
 let reviewerId: string;
 
-beforeAll(async () => {
+beforeEach(async () => {
   await truncateAll();
   await runSeed();
   const reviewer = await getUserByUsername("agent1");
@@ -334,5 +341,116 @@ describe("ToolActionService.executeToolAction — execute + re-validation", () =
     // open_carrier_investigation auto-approves; no separate approve call needed.
     const outcome = await executeToolAction(created.action.action_id);
     expect(outcome.kind).toBe("executed");
+  });
+});
+
+describe("ToolActionService — one active action per ticket", () => {
+  it("rejects a new request once another action for the ticket is approved", async () => {
+    const ticket = await triagedTicket("tkt_9001", "refund");
+    const first = await requestToolAction(ticket, "create_replacement_order", {
+      order_id: "ord_5001",
+      sku: "BG-AIRPODS-01",
+      reason: "damaged",
+      idempotency_key: "tkt_9001-conflict-1",
+    });
+    if (first.kind !== "created") throw new Error("fixture setup failed");
+    await decideToolAction(first.action.action_id, reviewerId, "approved", "approved");
+
+    const second = await requestToolAction(ticket, "start_refund_review", {
+      order_id: "ord_5001",
+      reason: "damaged",
+      amount: 500,
+      idempotency_key: "tkt_9001-conflict-2",
+    });
+    expect(second.kind).toBe("invalid");
+    if (second.kind === "invalid") expect(second.message).toMatch(/already has an? (approved|active)/i);
+  });
+
+  it("rejects a new request once another action for the ticket is executed", async () => {
+    const ticket = await triagedTicket("tkt_9002", "shipping");
+    const first = await requestToolAction(ticket, "open_carrier_investigation", {
+      order_id: "ord_5002",
+      tracking_number: "BLUETRK10002",
+      reason: "stale tracking",
+      idempotency_key: "tkt_9002-conflict-1",
+    });
+    if (first.kind !== "created") throw new Error("fixture setup failed");
+    await executeToolAction(first.action.action_id); // auto-approved, so this executes directly
+
+    const second = await requestToolAction(ticket, "escalate_to_human", {
+      ticket_id: "tkt_9002",
+      reason: "still stale",
+      queue: "specialist",
+      idempotency_key: "tkt_9002-conflict-2",
+    });
+    expect(second.kind).toBe("invalid");
+  });
+
+  it("allows two actions to sit in approval_required simultaneously, but blocks approving the second", async () => {
+    const ticket = await triagedTicket("tkt_9003", "refund");
+    const first = await requestToolAction(ticket, "create_replacement_order", {
+      order_id: "ord_5004",
+      sku: "BG-SOFT-01",
+      reason: "x",
+      idempotency_key: "tkt_9003-conflict-1",
+    });
+    const second = await requestToolAction(ticket, "start_refund_review", {
+      order_id: "ord_5004",
+      reason: "x",
+      amount: 500,
+      idempotency_key: "tkt_9003-conflict-2",
+    });
+    if (first.kind !== "created" || second.kind !== "created") throw new Error("fixture setup failed");
+
+    const approveFirst = await decideToolAction(first.action.action_id, reviewerId, "ok", "approved");
+    expect(approveFirst.kind).toBe("ok");
+
+    const approveSecond = await decideToolAction(second.action.action_id, reviewerId, "ok", "approved");
+    expect(approveSecond.kind).toBe("ticket_locked");
+  });
+
+  it("does not count a rejected action as active — a new request/approve still works", async () => {
+    const ticket = await triagedTicket("tkt_9004", "refund");
+    const first = await requestToolAction(ticket, "create_replacement_order", {
+      order_id: "ord_5005",
+      sku: "BG-TAB-10",
+      reason: "x",
+      idempotency_key: "tkt_9004-conflict-1",
+    });
+    if (first.kind !== "created") throw new Error("fixture setup failed");
+    await decideToolAction(first.action.action_id, reviewerId, "no", "rejected");
+
+    const second = await requestToolAction(ticket, "start_refund_review", {
+      order_id: "ord_5005",
+      reason: "x",
+      amount: 500,
+      idempotency_key: "tkt_9004-conflict-2",
+    });
+    expect(second.kind).toBe("created");
+    if (second.kind === "created") {
+      const approved = await decideToolAction(second.action.action_id, reviewerId, "ok", "approved");
+      expect(approved.kind).toBe("ok");
+    }
+  });
+
+  it("does not let a conflict on one ticket affect another ticket", async () => {
+    const ticketA = await triagedTicket("tkt_9001", "refund");
+    const actionA = await requestToolAction(ticketA, "create_replacement_order", {
+      order_id: "ord_5001",
+      sku: "BG-AIRPODS-01",
+      reason: "x",
+      idempotency_key: "tkt_9001-conflict-isolation",
+    });
+    if (actionA.kind !== "created") throw new Error("fixture setup failed");
+    await decideToolAction(actionA.action.action_id, reviewerId, "ok", "approved");
+
+    const ticketB = await triagedTicket("tkt_9008", "billing");
+    const actionB = await requestToolAction(ticketB, "start_refund_review", {
+      order_id: "ord_5006",
+      reason: "x",
+      amount: 500,
+      idempotency_key: "tkt_9008-conflict-isolation",
+    });
+    expect(actionB.kind).toBe("created");
   });
 });

@@ -4,8 +4,13 @@ import { Login } from "./components/Login.js";
 import { Queue } from "./components/Queue.js";
 import { TicketView } from "./components/TicketView.js";
 import { EvalReport } from "./components/EvalReport.js";
+import { Documents } from "./components/Documents.js";
 
-type View = { name: "queue" } | { name: "ticket"; ticketId: string } | { name: "eval" };
+type View =
+  | { name: "queue" }
+  | { name: "ticket"; ticketId: string }
+  | { name: "eval" }
+  | { name: "documents" };
 
 export default function App() {
   const [displayName, setDisplayName] = useState<string | null>(() => (getToken() ? "agent" : null));
@@ -29,6 +34,9 @@ export default function App() {
           <button className="link-button" onClick={() => setView({ name: "queue" })}>
             Ticket queue
           </button>
+          <button className="link-button" onClick={() => setView({ name: "documents" })}>
+            Documents
+          </button>
           <button className="link-button" onClick={() => setView({ name: "eval" })}>
             Eval report
           </button>
@@ -48,6 +56,7 @@ export default function App() {
         {view.name === "ticket" && (
           <TicketView ticketId={view.ticketId} onBack={() => setView({ name: "queue" })} />
         )}
+        {view.name === "documents" && <Documents />}
         {view.name === "eval" && <EvalReport />}
       </main>
     </div>

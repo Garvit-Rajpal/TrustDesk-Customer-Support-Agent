@@ -191,3 +191,184 @@ button:disabled {
   border-radius: 6px;
   padding: 1rem;
 }
+
+.trace-panel {
+  border: 1px dashed #ccc;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+  background: #fafafa;
+}
+
+.trace-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.status-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.status-badge.status-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.status-blocked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-badge.status-failed {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.warning-note {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  color: #9a3412;
+  margin-top: 0.5rem;
+}
+
+.trace-section {
+  margin-top: 0.75rem;
+}
+
+.trace-section h5 {
+  margin: 0 0 0.35rem 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6b7280;
+}
+
+.chip-row {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+}
+
+.guardrail-layer {
+  margin-bottom: 0.5rem;
+}
+
+.layer-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin: 0.35rem 0 0.15rem 0;
+  color: #4b5563;
+}
+
+.guardrail-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.guardrail-list li {
+  padding: 0.15rem 0;
+}
+
+.check-pass span:first-child {
+  color: #16a34a;
+}
+
+.check-fail {
+  color: #991b1b;
+}
+
+.check-fail span:first-child {
+  color: #dc2626;
+}
+
+.danger-panel {
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+}
+
+.documents-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.documents-detail-pane {
+  position: sticky;
+  top: 1rem;
+}
+
+.doc-content {
+  white-space: pre-wrap;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.doc-search-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.doc-search-form input {
+  flex: 1;
+  padding: 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.ingest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.ingest-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+
+.ingest-form input,
+.ingest-form textarea {
+  padding: 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.ingest-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.ingest-row label {
+  flex: 1;
+}

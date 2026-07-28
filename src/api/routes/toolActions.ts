@@ -80,6 +80,14 @@ async function handleDecision(
     sendError(res, "CONFLICT", `Tool action is "${outcome.from}", not "approval_required"`);
     return;
   }
+  if (outcome.kind === "ticket_locked") {
+    sendError(
+      res,
+      "CONFLICT",
+      `Ticket already has an active action (${outcome.conflictingAction.tool_name}, ${outcome.conflictingAction.action_id}) — only one active action per ticket is allowed`
+    );
+    return;
+  }
   res.status(200).json({ data: { action_id: outcome.action.action_id, status: outcome.action.status } });
 }
 

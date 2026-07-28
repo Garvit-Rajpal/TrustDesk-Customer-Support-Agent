@@ -1,29 +1,53 @@
 import { useState } from "react";
 import { api, type RecommendedAction, type ToolActionResult } from "../api.js";
 
-// One recommended action -> its own request/approve/reject/execute
-// lifecycle. The payload is a hand-editable JSON textarea rather than a
-// per-tool generated form — the frontend doesn't have the tool catalog's
-// required_fields loaded, and HLD explicitly allows "JSON panels" here.
+// Best-effort per-tool payload pre-fill from data already on screen
+// (ticket/order/customer). This does NOT replace the tool catalog's
+// required_fields validation — it's a convenience default in an otherwise
+// hand-editable JSON textarea (HLD explicitly allows "JSON panels" here,
+// not a generated form per tool). Fields this can't infer (e.g. `queue`,
+// coupon `amount`) get a placeholder the agent is expected to review.
+function defaultPayload(
+  toolName: string,
+  ticketId: string,
+  reason: string,
+  order: Record<string, unknown> | null,
+  customer: Record<string, unknown> | null
+): Record<string, unknown> {
+  const base = { reason, idempotency_key: `${ticketId}-${toolName}-1` };
+  const items = (order?.items as { sku?: string }[] | undefined) ?? [];
+
+  switch (toolName) {
+    case "create_replacement_order":
+      return { ...base, order_id: order?.order_id, sku: items[0]?.sku ?? "" };
+    case "start_refund_review":
+      return { ...base, order_id: order?.order_id, amount: order?.total ?? 0 };
+    case "issue_coupon":
+      return { ...base, customer_id: customer?.customer_id, amount: 500 };
+    case "open_carrier_investigation":
+      return { ...base, order_id: order?.order_id, tracking_number: order?.tracking_number ?? "" };
+    case "escalate_to_human":
+      return { ...base, ticket_id: ticketId, queue: "specialist_review" };
+    case "lock_account":
+      return { ...base, customer_id: customer?.customer_id };
+    default:
+      return { ...base, ...(order?.order_id ? { order_id: order.order_id } : {}) };
+  }
+}
+
 export function ActionPanel({
   ticketId,
-  orderId,
+  order,
+  customer,
   action,
 }: {
   ticketId: string;
-  orderId: string | null;
+  order: Record<string, unknown> | null;
+  customer: Record<string, unknown> | null;
   action: RecommendedAction;
 }) {
   const [payloadText, setPayloadText] = useState(() =>
-    JSON.stringify(
-      {
-        ...(orderId ? { order_id: orderId } : {}),
-        reason: action.reason,
-        idempotency_key: `${ticketId}-${action.tool_name}-1`,
-      },
-      null,
-      2
-    )
+    JSON.stringify(defaultPayload(action.tool_name, ticketId, action.reason, order, customer), null, 2)
   );
   const [result, setResult] = useState<ToolActionResult | null>(null);
   const [reason, setReason] = useState("Reviewed and confirmed.");

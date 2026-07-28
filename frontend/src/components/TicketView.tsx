@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
 import { api, type DraftResult, type TicketDetail, type TriageResult } from "../api.js";
 import { ActionPanel } from "./ActionPanel.js";
+import { TracePanel } from "./TracePanel.js";
+
+type TriageDisplay = Pick<
+  TriageResult,
+  "category" | "priority" | "sentiment" | "should_escalate" | "reason_summary"
+>;
 
 export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () => void }) {
   const [detail, setDetail] = useState<TicketDetail | null>(null);
-  const [triage, setTriage] = useState<TriageResult | null>(null);
+  const [triage, setTriage] = useState<TriageDisplay | null>(null);
+  // Separate from `triage` because a triage loaded from the stored ticket
+  // (page load) has no run_id — only a freshly-run triage in this session
+  // does, and TracePanel needs to tell "no trace yet" apart from "loading".
+  const [triageRunId, setTriageRunId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -14,7 +24,8 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
       .getTicket(ticketId)
       .then((res) => {
         setDetail(res);
-        setTriage(res.ticket.triage ? { ...res.ticket.triage, ticket_id: ticketId, run_id: "" } : null);
+        setTriage(res.ticket.triage);
+        setTriageRunId(null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load ticket"));
   }
@@ -22,6 +33,7 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
   useEffect(() => {
     setDetail(null);
     setTriage(null);
+    setTriageRunId(null);
     setDraft(null);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -31,7 +43,9 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
     setError(null);
     setBusy(true);
     try {
-      setTriage(await api.triage(ticketId));
+      const result = await api.triage(ticketId);
+      setTriage(result);
+      setTriageRunId(result.run_id);
       setDraft(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Triage failed");
@@ -55,7 +69,6 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
   if (!detail) return <p>Loading…</p>;
 
   const { ticket, customer, order } = detail;
-  const orderId = ticket.order_id;
 
   return (
     <div>
@@ -117,6 +130,7 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
               </tr>
             </tbody>
           </table>
+          <TracePanel runId={triageRunId} />
         </section>
       )}
 
@@ -125,13 +139,15 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
           <h3>Draft reply — {draft.resolution_type}</h3>
           <p className="draft-body">{draft.body}</p>
           <p className="muted">Citations: {draft.citations.length > 0 ? draft.citations.join(", ") : "none"}</p>
+          <TracePanel runId={draft.run_id} />
 
           {draft.recommended_actions.length === 0 && <p className="muted">No recommended actions.</p>}
           {draft.recommended_actions.map((action) => (
             <ActionPanel
               key={action.tool_name}
               ticketId={ticketId}
-              orderId={orderId}
+              order={order}
+              customer={customer}
               action={action}
             />
           ))}

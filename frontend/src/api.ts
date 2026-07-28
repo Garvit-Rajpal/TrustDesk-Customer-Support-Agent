@@ -111,6 +111,57 @@ export interface EvalReport {
   }[];
 }
 
+export interface GuardrailCheckResult {
+  layer: "input_scan" | "prompt_structure" | "output_scan";
+  check: string;
+  passed: boolean;
+  detail?: string;
+}
+
+export interface AgentRunTrace {
+  run_id: string;
+  ticket_id: string | null;
+  run_type: string;
+  status: "completed" | "guardrail_blocked" | "failed";
+  retrieved_doc_ids: string[];
+  tool_calls: unknown[];
+  guardrail_results: GuardrailCheckResult[];
+  rejected_output: unknown;
+  model_provider: string | null;
+  model_name: string | null;
+  latency_ms: number | null;
+  created_at: string;
+}
+
+// GET /documents and GET /documents/:docId return the same shape (both
+// include full content — kbDocumentsRepo doesn't have a lighter summary
+// projection).
+export interface KbDocument {
+  doc_id: string;
+  title: string;
+  content: string;
+  source_path: string;
+  version: string;
+  audience: string;
+}
+
+export interface DocumentSearchResult {
+  doc_id: string;
+  title: string;
+  snippet: string;
+  score: number;
+  audience: string;
+}
+
+export interface IngestDocumentInput {
+  doc_id: string;
+  title: string;
+  content: string;
+  source_path: string;
+  version?: string;
+  audience?: string;
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<LoginResult>("POST", "/auth/login", { username, password }),
@@ -132,5 +183,15 @@ export const api = {
   runEval: (caseIds?: string[]) =>
     request<EvalReport>("POST", "/eval-runs", caseIds ? { case_ids: caseIds } : {}),
 
-  getAgentRun: (runId: string) => request<Record<string, unknown>>("GET", `/agent-runs/${runId}`),
+  getAgentRun: (runId: string) => request<AgentRunTrace>("GET", `/agent-runs/${runId}`),
+
+  listDocuments: () => request<{ documents: KbDocument[] }>("GET", "/documents"),
+  getDocument: (docId: string) => request<KbDocument>("GET", `/documents/${docId}`),
+  searchDocuments: (q: string, category?: string) =>
+    request<{ query: string; results: DocumentSearchResult[] }>(
+      "GET",
+      `/documents/search?${new URLSearchParams({ q, ...(category ? { category } : {}) })}`
+    ),
+  ingestDocuments: (documents: IngestDocumentInput[]) =>
+    request<{ ingested: number; document_ids: string[] }>("POST", "/documents/ingest", { documents }),
 };

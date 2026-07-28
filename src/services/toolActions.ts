@@ -10,6 +10,7 @@ import { TriageResult } from "../domain/schemas.js";
 import { newActionId, newApprovalId } from "../domain/ids.js";
 import { getToolCatalogEntry } from "../db/repos/toolCatalogRepo.js";
 import {
+  getActiveActionForTicket,
   getToolActionById,
   getToolActionByIdempotencyKey,
   insertToolAction,
@@ -83,6 +84,20 @@ export async function requestToolAction(
     return { kind: "replayed", action: existing };
   }
 
+  // 6. One active action per ticket (product decision, not in LLD): once
+  // anything is approved/executed for this ticket, block a genuinely new
+  // request — a customer can't end up with both a replacement AND a refund
+  // for the same issue. Actions still sitting in approval_required don't
+  // count yet; the matching guard at approve-time (below) is what prevents
+  // two simultaneously-requested actions from both going through.
+  const activeConflict = await getActiveActionForTicket(ticket.ticket_id);
+  if (activeConflict) {
+    return {
+      kind: "invalid",
+      message: `Ticket ${ticket.ticket_id} already has an active action (${activeConflict.tool_name}, ${activeConflict.action_id}, status ${activeConflict.status}) — no further actions allowed`,
+    };
+  }
+
   const status: ActionStatus = tool.requires_human_approval ? "approval_required" : "approved";
 
   try {
@@ -117,6 +132,7 @@ function isUniqueViolation(err: unknown): boolean {
 export type DecisionOutcome =
   | { kind: "not_found" }
   | { kind: "illegal_transition"; from: ActionStatus }
+  | { kind: "ticket_locked"; conflictingAction: ToolActionRow }
   | { kind: "ok"; action: ToolActionRow };
 
 export async function decideToolAction(
@@ -131,6 +147,18 @@ export async function decideToolAction(
   // no auto-retry loop (HLD §4.3).
   if (action.status !== "approval_required") {
     return { kind: "illegal_transition", from: action.status };
+  }
+
+  // One active action per ticket: two actions can both sit in
+  // approval_required (request-time only blocks once one is already
+  // approved/executed), but only the first one approved may proceed.
+  // Rejection never triggers this — it can't create a second "resolved"
+  // state, so it always skips this check.
+  if (decision === "approved") {
+    const activeConflict = await getActiveActionForTicket(action.ticket_id, actionId);
+    if (activeConflict) {
+      return { kind: "ticket_locked", conflictingAction: activeConflict };
+    }
   }
 
   await insertApproval({

@@ -1,6 +1,11 @@
 // Milestone 7: HTTP layer over the tool-action lifecycle — request →
 // approve/reject → execute.
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+//
+// Full reset before EVERY test: the "one active action per ticket" rule
+// (Solution/docs/PROGRESS.md) means a test that approves/executes an
+// action on tkt_9001 would otherwise block a later, unrelated test that
+// also targets tkt_9001.
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { pool, truncateAll } from "../../src/db/pool.js";
@@ -9,7 +14,7 @@ import { runSeed } from "../../src/db/seed.js";
 describe("tool-actions lifecycle", () => {
   let token: string;
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     await truncateAll();
     await runSeed();
     const login = await request(app)
