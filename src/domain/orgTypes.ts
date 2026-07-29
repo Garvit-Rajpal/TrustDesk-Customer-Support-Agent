@@ -13,3 +13,10 @@ export const CreateOrgRequest = z.object({
   admin_display_name: z.string().min(1),
 });
 export type CreateOrgRequest = z.infer<typeof CreateOrgRequest>;
+
+// V3-6 (LLD_v3 §4): both flags optional and independently settable.
+export const UpdateConsentRequest = z.object({
+  allow_platform_support: z.boolean().optional(),
+  allow_platform_metrics: z.boolean().optional(),
+});
+export type UpdateConsentRequest = z.infer<typeof UpdateConsentRequest>;

@@ -54,6 +54,9 @@ signupRouter.post("/", signupRateLimiter, async (req, res, next) => {
           display_name: parsed.data.admin_display_name,
           role: "admin",
           org_id: outcome.org.org_id,
+          // V3-7 (LLD_v3 §5): a brand-new admin has never seen the welcome
+          // banner.
+          welcome_seen_at: null,
         },
         org: { org_id: outcome.org.org_id, name: outcome.org.name, slug: outcome.org.slug },
         document_ids: outcome.document_ids,

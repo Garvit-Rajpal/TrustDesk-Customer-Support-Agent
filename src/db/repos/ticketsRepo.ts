@@ -26,6 +26,17 @@ export async function upsertSeedTicket(ticket: SeedTicket, orgId = "org_default"
   );
 }
 
+// V3-7 (LLD_v3 §5): GROUP BY for the dashboard's tickets-by-status tile.
+// Statuses with zero tickets simply don't appear — the frontend/service
+// layer fills in 0 for any status.ts value missing from this map.
+export async function countTicketsByStatus(ctx: OrgContext): Promise<Record<string, number>> {
+  const { rows } = await pool.query(
+    `SELECT status, COUNT(*)::int AS count FROM tickets WHERE org_id = $1 GROUP BY status`,
+    [ctx.org_id]
+  );
+  return Object.fromEntries(rows.map((r) => [r.status, r.count]));
+}
+
 // Selects only runtime-visible columns — no expected_* labels ever leave
 // this repo (HLD invariant #4: those live only in ticket_expected_labels,
 // read by the EvalRunner / seed loader). V2-5: org_id filter is the

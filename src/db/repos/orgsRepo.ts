@@ -1,6 +1,7 @@
 import { pool } from "../pool.js";
 import { Org } from "../../domain/entities.js";
 import type { Vertical } from "../../domain/schemas.js";
+import type { OrgContext } from "../../domain/orgContext.js";
 
 // Not org-scoped by OrgContext (there's nothing to scope by yet — this is
 // the table OrgContext.org_id points into). insertOrg is the one write path
@@ -13,7 +14,7 @@ export async function insertOrg(org: {
 }): Promise<Org> {
   const { rows } = await pool.query(
     `INSERT INTO orgs (org_id, name, slug, vertical) VALUES ($1, $2, $3, $4)
-     RETURNING org_id, name, slug, vertical, created_at::text`,
+     RETURNING org_id, name, slug, vertical, allow_platform_support, allow_platform_metrics, created_at::text`,
     [org.org_id, org.name, org.slug, org.vertical]
   );
   return Org.parse(rows[0]);
@@ -39,7 +40,8 @@ export async function upsertSeedOrg(org: {
 
 export async function getOrgById(orgId: string): Promise<Org | null> {
   const { rows } = await pool.query(
-    `SELECT org_id, name, slug, vertical, created_at::text FROM orgs WHERE org_id = $1`,
+    `SELECT org_id, name, slug, vertical, allow_platform_support, allow_platform_metrics, created_at::text
+     FROM orgs WHERE org_id = $1`,
     [orgId]
   );
   if (rows.length === 0) return null;
@@ -51,4 +53,22 @@ export async function getOrgById(orgId: string): Promise<Org | null> {
 export async function slugExists(slug: string): Promise<boolean> {
   const { rows } = await pool.query(`SELECT 1 FROM orgs WHERE slug = $1`, [slug]);
   return rows.length > 0;
+}
+
+// V3-6 (LLD_v3 §4, HLD_v3 ADR-16): both fields optional/independently
+// settable — COALESCE leaves an omitted flag untouched rather than
+// resetting it to its column default.
+export async function updateOrgConsent(
+  ctx: OrgContext,
+  patch: { allow_platform_support?: boolean; allow_platform_metrics?: boolean }
+): Promise<Org> {
+  const { rows } = await pool.query(
+    `UPDATE orgs SET
+       allow_platform_support = COALESCE($2, allow_platform_support),
+       allow_platform_metrics = COALESCE($3, allow_platform_metrics)
+     WHERE org_id = $1
+     RETURNING org_id, name, slug, vertical, allow_platform_support, allow_platform_metrics, created_at::text`,
+    [ctx.org_id, patch.allow_platform_support ?? null, patch.allow_platform_metrics ?? null]
+  );
+  return Org.parse(rows[0]);
 }

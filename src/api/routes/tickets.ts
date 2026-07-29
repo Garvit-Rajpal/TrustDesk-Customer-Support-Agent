@@ -1,4 +1,6 @@
 import { Router, type Response } from "express";
+import type { OrgContext } from "../../domain/orgContext.js";
+import type { Ticket } from "../../domain/entities.js";
 import { CreateTicketRequest, ManualReplyRequest, SimulateInboundRequest } from "../../domain/ticketTypes.js";
 import { newMessageId, newTicketId } from "../../domain/ids.js";
 import { getTicketById, listTickets, insertTicket } from "../../db/repos/ticketsRepo.js";
@@ -9,14 +11,37 @@ import { insertMessage, listMessagesByTicketId } from "../../db/repos/ticketMess
 import { sendError } from "../errorEnvelope.js";
 import type { ModelAdapter } from "../../adapters/modelAdapter.js";
 import { runTriage } from "../../services/triage.js";
-import { generateDraft } from "../../services/draft.js";
-import { closeTicket, resolveTicket, sendManualReply, simulateInbound } from "../../services/ticketThread.js";
+import { generateDraft, evaluateAutoSend, type DraftOutcome } from "../../services/draft.js";
+import { closeTicket, resolveTicket, sendDraft, sendManualReply, simulateInbound } from "../../services/ticketThread.js";
+import { getDraftById } from "../../db/repos/draftsRepo.js";
 import { greetingTemplate } from "../../services/ticketGreeting.js";
 import { getAgentRunById } from "../../db/repos/agentRunsRepo.js";
 import { listRunEventsByRunId } from "../../db/repos/runEventsRepo.js";
 import { isTerminalEvent, pipelineEventBus } from "../../services/events/pipelineEventBus.js";
 import type { RunEvent } from "../../domain/schemas.js";
 import { requirePermission } from "../middleware/permissions.js";
+
+// V3-5 (LLD_v3 §3): shared by both the manual draft-reply route and the
+// ticket-creation auto-pipeline below, so auto-send behaves identically
+// regardless of what triggered the draft. Re-fetches the just-inserted
+// DraftRow (generateDraft only returns a DraftOutcome) since sendDraft
+// needs the full row shape.
+async function autoSendIfEligible(
+  ctx: OrgContext,
+  ticket: Ticket,
+  outcome: DraftOutcome,
+  authorUserId: string
+): Promise<boolean> {
+  if (!evaluateAutoSend(outcome)) {
+    return false;
+  }
+  const draftRow = await getDraftById(ctx, outcome.draftId);
+  if (!draftRow) {
+    return false;
+  }
+  const sendOutcome = await sendDraft(ctx, ticket, draftRow, authorUserId);
+  return sendOutcome.kind === "ok";
+}
 
 // Factory rather than a module-level Router: the triage route needs a
 // ModelAdapter, and tests must be able to inject a MockModelAdapter with
@@ -71,8 +96,9 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
         return;
       }
 
+      let order = null as Awaited<ReturnType<typeof getOrderById>>;
       if (order_id) {
-        const order = await getOrderById(ctx, order_id);
+        order = await getOrderById(ctx, order_id);
         if (!order) {
           sendError(res, "VALIDATION_ERROR", `order_id ${order_id} does not exist`);
           return;
@@ -124,7 +150,34 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
         });
       }
 
-      res.status(201).json({ data: ticket });
+      // V3-5 (LLD_v3 §3, HLD_v3 ADR-15): synchronously run the same
+      // triage -> draft pipeline the manual buttons trigger, right after
+      // ticket creation (HLD invariant #6: every AI run's agent_runs row is
+      // written before the API responds — no new async/background pattern).
+      // Best-effort: the ticket + greeting are already committed above, so a
+      // model/pipeline failure here must never fail ticket creation itself.
+      let pipeline: { triage: boolean; draft: boolean; auto_sent: boolean } = {
+        triage: false,
+        draft: false,
+        auto_sent: false,
+      };
+      try {
+        const triageOutcome = await runTriage(ctx, modelAdapter, ticket, customer, order);
+        if (triageOutcome.status === "completed") {
+          pipeline.triage = true;
+          const triagedTicket = await getTicketById(ctx, ticket.ticket_id);
+          if (triagedTicket) {
+            const draftOutcome = await generateDraft(ctx, modelAdapter, triagedTicket, customer, order);
+            pipeline.draft = true;
+            pipeline.auto_sent = await autoSendIfEligible(ctx, triagedTicket, draftOutcome, "system");
+          }
+        }
+      } catch {
+        // Leave pipeline at its last-known-true state; ticket creation
+        // itself already succeeded and must be reported as such.
+      }
+
+      res.status(201).json({ data: { ...ticket, pipeline } });
     } catch (err) {
       next(err);
     }
@@ -191,6 +244,11 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
       const order = ticket.order_id ? await getOrderById(ctx, ticket.order_id) : null;
 
       const outcome = await generateDraft(ctx, modelAdapter, ticket, customer!, order);
+      // V3-5 (LLD_v3 §3, HLD_v3 ADR-15): same eligibility check the
+      // ticket-creation auto-pipeline uses below — auto-send behaves
+      // identically whether triage/draft were triggered by ticket creation
+      // or by an agent manually clicking draft-reply.
+      const autoSent = await autoSendIfEligible(ctx, ticket, outcome, req.user!.sub);
 
       res.status(200).json({
         data: {
@@ -201,6 +259,7 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
           citations: outcome.citations,
           recommended_actions: outcome.recommendedActions,
           run_id: outcome.runId,
+          auto_sent: autoSent,
         },
       });
     } catch (err) {

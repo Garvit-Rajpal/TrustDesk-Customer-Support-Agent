@@ -8,6 +8,7 @@ export interface UserRow {
   display_name: string;
   role: string;
   org_id: string;
+  welcome_seen_at?: string | null;
 }
 
 // Not org-scoped by ctx: login (POST /auth/login) happens before any JWT
@@ -16,11 +17,22 @@ export interface UserRow {
 // first"), and org_id on the returned row is what seeds the JWT's org claim.
 export async function getUserByUsername(username: string): Promise<UserRow | null> {
   const { rows } = await pool.query(
-    `SELECT user_id, username, password_hash, display_name, role, org_id
+    `SELECT user_id, username, password_hash, display_name, role, org_id, welcome_seen_at::text
      FROM users WHERE username = $1`,
     [username]
   );
   return rows[0] ?? null;
+}
+
+// V3-7 (LLD_v3 §5): set-once — POST /users/me/welcome-seen. Idempotent by
+// construction (re-running just re-sets the same "now").
+export async function markWelcomeSeen(ctx: OrgContext, userId: string): Promise<string> {
+  const { rows } = await pool.query(
+    `UPDATE users SET welcome_seen_at = now() WHERE user_id = $1 AND org_id = $2
+     RETURNING welcome_seen_at::text`,
+    [userId, ctx.org_id]
+  );
+  return rows[0].welcome_seen_at;
 }
 
 // V2-2 (LLD_v2 §3, ADR-9): POST /users/invite's write path — a real INSERT,

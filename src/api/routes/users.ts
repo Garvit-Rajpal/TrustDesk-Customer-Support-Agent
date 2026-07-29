@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import { InviteUserRequest } from "../../domain/authTypes.js";
 import { newUserId } from "../../domain/ids.js";
-import { getUserByUsername, insertUser } from "../../db/repos/usersRepo.js";
+import { getUserByUsername, insertUser, markWelcomeSeen } from "../../db/repos/usersRepo.js";
 import { sendError } from "../errorEnvelope.js";
 import { requirePermission } from "../middleware/permissions.js";
 
@@ -30,6 +30,18 @@ usersRouter.post("/invite", requirePermission("users:invite"), async (req, res, 
     await insertUser(req.orgContext!, { user_id, username, password_hash, display_name, role });
 
     res.status(201).json({ data: { user_id, username, display_name, role } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// V3-7 (LLD_v3 §5): any authenticated user may dismiss their own welcome
+// banner — no extra permission beyond being logged in (this touches only
+// the caller's own row, identified from the JWT, never another user's).
+usersRouter.post("/me/welcome-seen", async (req, res, next) => {
+  try {
+    const welcomeSeenAt = await markWelcomeSeen(req.orgContext!, req.user!.sub);
+    res.status(200).json({ data: { welcome_seen_at: welcomeSeenAt } });
   } catch (err) {
     next(err);
   }

@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { CreateOrgRequest } from "../../domain/orgTypes.js";
+import { CreateOrgRequest, UpdateConsentRequest } from "../../domain/orgTypes.js";
 import { createOrg } from "../../services/orgOnboarding.js";
+import { getOrgById, updateOrgConsent } from "../../db/repos/orgsRepo.js";
 import { sendError } from "../errorEnvelope.js";
 import { requirePermission } from "../middleware/permissions.js";
 
@@ -36,6 +37,46 @@ orgsRouter.post("/", requirePermission("orgs:create"), async (req, res, next) =>
         admin_user_id: outcome.admin_user_id,
         document_ids: outcome.document_ids,
         customer_ids: outcome.customer_ids,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// V3-6 (LLD_v3 §4, HLD_v3 ADR-16): a tenant admin's own org, read/write —
+// unlike the /platform routes below, this is a normal ctx.org_id-scoped
+// operation, not a cross-tenant one.
+orgsRouter.get("/consent", requirePermission("orgs:consent:manage"), async (req, res, next) => {
+  try {
+    const org = await getOrgById(req.orgContext!.org_id);
+    if (!org) {
+      sendError(res, "NOT_FOUND", `Org ${req.orgContext!.org_id} not found`);
+      return;
+    }
+    res.status(200).json({
+      data: {
+        allow_platform_support: org.allow_platform_support,
+        allow_platform_metrics: org.allow_platform_metrics,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+orgsRouter.put("/consent", requirePermission("orgs:consent:manage"), async (req, res, next) => {
+  try {
+    const parsed = UpdateConsentRequest.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, "VALIDATION_ERROR", "Invalid consent payload", parsed.error.flatten());
+      return;
+    }
+    const org = await updateOrgConsent(req.orgContext!, parsed.data);
+    res.status(200).json({
+      data: {
+        allow_platform_support: org.allow_platform_support,
+        allow_platform_metrics: org.allow_platform_metrics,
       },
     });
   } catch (err) {

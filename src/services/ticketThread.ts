@@ -68,13 +68,24 @@ export async function sendDraft(
 // otherwise). The first call on a ticket marks it human_owned — permanent,
 // until resolved/closed — which the draft-reply route checks to 409 any
 // further AI drafting attempts on this thread.
+//
+// Deliberate exception to "every transition goes through canTransition()":
+// the general v2 state machine only reaches awaiting_customer from
+// in_progress — a customer_replied ticket must normally be re-triaged back
+// to in_progress first, which forces the AI pipeline through a fresh triage
+// before drafting again. A human taking over doesn't go through
+// triage/draft at all, so requiring that same detour here is just friction
+// with no safety benefit — a human can reply directly from either
+// in_progress or customer_replied.
+const MANUAL_REPLY_SOURCES: ReadonlyArray<Ticket["status"]> = ["in_progress", "customer_replied"];
+
 export async function sendManualReply(
   ctx: OrgContext,
   ticket: Ticket,
   body: string,
   authorUserId: string
 ): Promise<ThreadOutcome> {
-  if (!canTransition(ticket.status, "awaiting_customer")) {
+  if (!MANUAL_REPLY_SOURCES.includes(ticket.status)) {
     return { kind: "illegal_transition", from: ticket.status };
   }
   const message = await insertMessage(ctx, {

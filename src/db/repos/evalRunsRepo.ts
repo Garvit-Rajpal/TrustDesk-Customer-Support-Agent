@@ -48,3 +48,17 @@ export async function getEvalRunById(ctx: OrgContext, evalRunId: string): Promis
   );
   return rows[0] ?? null;
 }
+
+// V3-7 (LLD_v3 §5): dashboard's eval-summary tile — most recently completed
+// run only, no history. Never called for a non-org_default ctx in practice
+// (the eval runner remains org_default-only, unchanged from v2), but scoped
+// by org_id regardless for consistency with every other repo function.
+export async function getLatestEvalRun(ctx: OrgContext): Promise<EvalRunRow | null> {
+  const { rows } = await pool.query(
+    `SELECT eval_run_id, started_at::text, completed_at::text, total_cases, metrics, case_results
+     FROM eval_runs WHERE org_id = $1
+     ORDER BY completed_at DESC NULLS LAST LIMIT 1`,
+    [ctx.org_id]
+  );
+  return rows[0] ?? null;
+}

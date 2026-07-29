@@ -12,6 +12,7 @@ import { TracePanel } from "./TracePanel.js";
 import { RunStepper } from "./RunStepper.js";
 import { FeedbackControl } from "./FeedbackControl.js";
 import { StatusBadge } from "../design-system/StatusBadge.js";
+import { ChatThread } from "../design-system/ChatThread.js";
 
 type TriageDisplay = Pick<
   TriageResult,
@@ -38,6 +39,10 @@ export function TicketView({
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [replyBody, setReplyBody] = useState("");
+  // V3-9 (LLD_v3 §6): only the message produced by an action taken in this
+  // component during this session gets the typewriter treatment — history
+  // loaded from GET /messages renders instantly.
+  const [freshMessageId, setFreshMessageId] = useState<string | null>(null);
 
   function load() {
     api
@@ -64,6 +69,7 @@ export function TicketView({
     setTriageRunId(null);
     setDraft(null);
     setMessages([]);
+    setFreshMessageId(null);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
@@ -96,7 +102,18 @@ export function TicketView({
     setError(null);
     setBusy(true);
     try {
-      setDraft(await api.draftReply(ticketId));
+      const result = await api.draftReply(ticketId);
+      setDraft(result);
+      // V3-5 (LLD_v3 §3): draft-reply auto-sends when eligible — the reply
+      // is already on the thread, so reload it and let the newest outbound
+      // message get the typewriter treatment, same as a manual send.
+      if (result.auto_sent) {
+        const res = await api.getMessages(ticketId);
+        setMessages(res.messages);
+        const last = res.messages[res.messages.length - 1];
+        if (last) setFreshMessageId(last.message_id);
+        await refreshStatus();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Draft failed");
     } finally {
@@ -109,8 +126,9 @@ export function TicketView({
     setError(null);
     setBusy(true);
     try {
-      await api.sendDraft(draft.draft_id);
+      const result = await api.sendDraft(draft.draft_id);
       setDraft(null);
+      setFreshMessageId(result.message.message_id);
       await refreshStatus();
       loadMessages();
     } catch (err) {
@@ -173,27 +191,39 @@ export function TicketView({
       </button>
       <h2>
         {ticket.subject} <StatusBadge value={ticket.status} />
+        {ticket.human_owned && (
+          <span className="ml-2 inline-block rounded-ds-sm bg-status-warning-bg px-2 py-0.5 text-xs font-semibold text-status-warning-fg">
+            Human-owned
+          </span>
+        )}
       </h2>
       <p className="muted">
         {ticket.ticket_id} · {ticket.channel} · {ticket.created_at}
       </p>
       <p>{ticket.body}</p>
 
-      <section className="thread-panel">
-        <h4>Thread</h4>
-        {messages.length === 0 && <p className="muted">Loading…</p>}
-        <ul className="thread-list">
-          {messages.map((m) => (
-            <li key={m.message_id} className={`thread-message thread-message--${m.direction}`}>
-              <div className="thread-message-meta">
-                {m.direction} · {m.author} · {m.created_at}
-              </div>
-              <div className="thread-message-body">{m.body}</div>
-            </li>
-          ))}
-        </ul>
+      <section className="my-4 h-[420px] rounded-ds-lg border border-ds-border bg-ds-bg p-3">
+        {messages.length === 0 ? (
+          <p className="muted">Loading…</p>
+        ) : (
+          <ChatThread
+            ticketId={ticketId}
+            messages={messages}
+            humanOwned={ticket.human_owned}
+            disabled={ticket.status === "closed"}
+            latestOutboundIsFresh={Boolean(freshMessageId)}
+            onMessageSent={(message) => {
+              setMessages((prev) => [...prev, message]);
+              setFreshMessageId(message.message_id);
+              refreshStatus();
+            }}
+          />
+        )}
+      </section>
 
-        <div className="decision-row">
+      <details className="mb-4 text-sm">
+        <summary className="cursor-pointer text-ds-text-muted">Demo controls</summary>
+        <div className="decision-row mt-2">
           <input
             placeholder="Simulate a customer reply…"
             value={replyBody}
@@ -213,7 +243,7 @@ export function TicketView({
             Close
           </button>
         </div>
-      </section>
+      </details>
 
       <div className="context-grid">
         <div>
@@ -232,9 +262,12 @@ export function TicketView({
         <button disabled={busy} onClick={handleTriage}>
           Run triage
         </button>
-        <button disabled={busy || !triage} onClick={handleDraft}>
+        <button disabled={busy || !triage || ticket.human_owned} onClick={handleDraft}>
           Generate draft reply
         </button>
+        {ticket.human_owned && (
+          <span className="muted">This ticket is human-owned — AI drafting is disabled.</span>
+        )}
       </div>
 
       {triage && (
@@ -271,17 +304,26 @@ export function TicketView({
 
       {draft && (
         <section>
-          <h3>Draft reply — {draft.resolution_type}</h3>
+          <h3>
+            Draft reply — {draft.resolution_type}
+            {draft.auto_sent && (
+              <span className="ml-2 inline-block rounded-ds-sm bg-status-success-bg px-2 py-0.5 text-xs font-semibold text-status-success-fg">
+                Auto-sent
+              </span>
+            )}
+          </h3>
           <p className="draft-body">{draft.body}</p>
           <p className="muted">Citations: {draft.citations.length > 0 ? draft.citations.join(", ") : "none"}</p>
           <RunStepper ticketId={ticketId} runId={draft.run_id} />
           <TracePanel runId={draft.run_id} />
           <FeedbackControl draftId={draft.draft_id} />
-          <div className="actions-row">
-            <button disabled={busy} onClick={handleSendDraft}>
-              Send draft to customer
-            </button>
-          </div>
+          {!draft.auto_sent && (
+            <div className="actions-row">
+              <button disabled={busy} onClick={handleSendDraft}>
+                Send draft to customer
+              </button>
+            </div>
+          )}
 
           {draft.recommended_actions.length === 0 && <p className="muted">No recommended actions.</p>}
           {draft.recommended_actions.map((action) => (

@@ -7,6 +7,7 @@ const TOKEN_KEY = "trustdesk_token";
 const ROLE_KEY = "trustdesk_role";
 const ORG_ID_KEY = "trustdesk_org_id";
 const ORG_NAME_KEY = "trustdesk_org_name";
+const WELCOME_SEEN_KEY = "trustdesk_welcome_seen_at";
 
 export type Role = "agent" | "manager" | "admin";
 
@@ -51,6 +52,19 @@ export function clearOrg(): void {
   localStorage.removeItem(ORG_NAME_KEY);
 }
 
+// V3-7 (LLD_v3 §5): mirrors role/org's persist-across-reload pattern so the
+// welcome banner doesn't reappear on every hard refresh.
+export function getWelcomeSeenAt(): string | null {
+  return localStorage.getItem(WELCOME_SEEN_KEY);
+}
+export function setWelcomeSeenAt(value: string | null): void {
+  if (value) localStorage.setItem(WELCOME_SEEN_KEY, value);
+  else localStorage.removeItem(WELCOME_SEEN_KEY);
+}
+export function clearWelcomeSeenAt(): void {
+  localStorage.removeItem(WELCOME_SEEN_KEY);
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken();
   const res = await fetch(path, {
@@ -68,9 +82,18 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return json.data as T;
 }
 
+export interface SessionUser {
+  user_id: string;
+  display_name: string;
+  role: Role;
+  org_id: string;
+  // V3-7 (LLD_v3 §5): null until the frontend calls markWelcomeSeen once.
+  welcome_seen_at: string | null;
+}
+
 export interface LoginResult {
   token: string;
-  user: { user_id: string; display_name: string; role: Role; org_id: string };
+  user: SessionUser;
   // V2-5 (LLD_v2 §6): "login response includes org."
   org: { org_id: string; name: string; slug: string };
 }
@@ -98,6 +121,19 @@ export interface CreateOrgResult {
   org: Org;
   admin_user_id: string;
   document_ids: string[];
+  customer_ids: string[];
+}
+
+// V3-3 (LLD_v3 §2, HLD_v3 ADR-14): the signer picks their own admin
+// credentials — same shape as CreateOrgInput.
+export type SignupInput = CreateOrgInput;
+
+export interface SignupResult {
+  token: string;
+  user: SessionUser;
+  org: { org_id: string; name: string; slug: string };
+  document_ids: string[];
+  customer_ids: string[];
 }
 
 // V2-5 follow-up: POST /customers — a freshly onboarded org starts with
@@ -154,6 +190,16 @@ export interface TicketSummary {
   status: string;
   created_at: string;
   triage: { category: string; priority: string; sentiment: string; should_escalate: boolean; reason_summary: string } | null;
+  // V3-4 (LLD_v3 §3, HLD_v3 ADR-15): one-way human takeover flag.
+  human_owned: boolean;
+  human_owned_by: string | null;
+  human_owned_at: string | null;
+}
+
+// V3-5 (LLD_v3 §3, HLD_v3 ADR-15): POST /tickets now returns the ticket plus
+// the auto-pipeline's best-effort outcome.
+export interface CreateTicketResult extends TicketSummary {
+  pipeline: { triage: boolean; draft: boolean; auto_sent: boolean };
 }
 
 export interface TicketDetail {
@@ -186,6 +232,8 @@ export interface DraftResult {
   citations: string[];
   recommended_actions: RecommendedAction[];
   run_id: string;
+  // V3-5 (LLD_v3 §3, HLD_v3 ADR-15).
+  auto_sent: boolean;
 }
 
 export interface ToolActionResult {
@@ -299,7 +347,8 @@ export interface QualityReport extends CategoryMetrics {
   by_category: Record<string, CategoryMetrics>;
 }
 
-// V2-4 (LLD_v2 §5).
+// V2-4 (LLD_v2 §5). V3-4: human_owned drafts have draft_id: null and author
+// set to the human agent's user_id instead of "system"/a draft's author id.
 export interface TicketMessage {
   message_id: string;
   ticket_id: string;
@@ -310,13 +359,28 @@ export interface TicketMessage {
   created_at: string;
 }
 
+// V3-6 (LLD_v3 §4, HLD_v3 ADR-16).
+export interface ConsentFlags {
+  allow_platform_support: boolean;
+  allow_platform_metrics: boolean;
+}
+
+// V3-7 (LLD_v3 §5, HLD_v3 ADR-17).
+export interface DashboardSummary {
+  tickets_by_status: Record<string, number>;
+  quality: QualityReport;
+  eval_summary:
+    | { available: false }
+    | { available: true; eval_run_id: string; completed_at: string | null; metrics: Record<string, number> };
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<LoginResult>("POST", "/auth/login", { username, password }),
 
   listTickets: () => request<{ tickets: TicketSummary[] }>("GET", "/tickets"),
   getTicket: (id: string) => request<TicketDetail>("GET", `/tickets/${id}`),
-  createTicket: (input: CreateTicketInput) => request<TicketSummary>("POST", "/tickets", input),
+  createTicket: (input: CreateTicketInput) => request<CreateTicketResult>("POST", "/tickets", input),
   triage: (id: string) => request<TriageResult>("POST", `/tickets/${id}/triage`),
   draftReply: (id: string) => request<DraftResult>("POST", `/tickets/${id}/draft-reply`),
 
@@ -368,4 +432,29 @@ export const api = {
     request<{ ticket_id: string; status: string }>("POST", `/tickets/${ticketId}/close`),
 
   createOrg: (input: CreateOrgInput) => request<CreateOrgResult>("POST", "/orgs", input),
+
+  // V3-3 (LLD_v3 §2, HLD_v3 ADR-14): public, unauthenticated.
+  signup: (input: SignupInput) => request<SignupResult>("POST", "/signup", input),
+
+  // V3-4 (LLD_v3 §3, HLD_v3 ADR-15): human takeover — bypasses the draft
+  // pipeline entirely.
+  sendManualReply: (ticketId: string, body: string) =>
+    request<TicketMessage>("POST", `/tickets/${ticketId}/messages/reply`, { body }),
+
+  // V3-6 (LLD_v3 §4, HLD_v3 ADR-16).
+  getConsent: () => request<ConsentFlags>("GET", "/orgs/consent"),
+  updateConsent: (patch: Partial<ConsentFlags>) => request<ConsentFlags>("PUT", "/orgs/consent", patch),
+  platformTickets: (targetOrgId: string) =>
+    request<{ tickets: TicketSummary[] }>("GET", `/platform/tickets?target_org_id=${encodeURIComponent(targetOrgId)}`),
+  platformTicketMessages: (targetOrgId: string, ticketId: string) =>
+    request<{ messages: TicketMessage[] }>(
+      "GET",
+      `/platform/tickets/${ticketId}/messages?target_org_id=${encodeURIComponent(targetOrgId)}`
+    ),
+  platformMetrics: (targetOrgId: string) =>
+    request<QualityReport>("GET", `/platform/metrics?target_org_id=${encodeURIComponent(targetOrgId)}`),
+
+  // V3-7 (LLD_v3 §5, HLD_v3 ADR-17).
+  getDashboardSummary: () => request<DashboardSummary>("GET", "/dashboard/summary"),
+  markWelcomeSeen: () => request<{ welcome_seen_at: string }>("POST", "/users/me/welcome-seen"),
 };

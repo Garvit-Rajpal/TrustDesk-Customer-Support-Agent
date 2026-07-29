@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { api, type CreateOrgResult, type InviteUserResult, type Role, type Vertical } from "../api.js";
+import { useEffect, useState } from "react";
+import { api, type ConsentFlags, type CreateOrgResult, type InviteUserResult, type Role, type Vertical } from "../api.js";
 
 // V2-2 (LLD_v2 §3/§8/§9, ADR-9): "Admin-only POST /users/invite replaces
 // 'no signup' as the account-creation path." This page is the only place
@@ -30,6 +30,34 @@ export function Admin({ orgId }: { orgId: string }) {
   const [orgCreated, setOrgCreated] = useState<CreateOrgResult | null>(null);
   const [orgError, setOrgError] = useState<string | null>(null);
   const [orgBusy, setOrgBusy] = useState(false);
+
+  // V3-6/V3-9 (LLD_v3 §4, HLD_v3 ADR-16): org-wide, independently toggleable
+  // consent flags — scoped to the caller's own org (backend enforces this,
+  // see GET/PUT /orgs/consent).
+  const [consent, setConsent] = useState<ConsentFlags | null>(null);
+  const [consentError, setConsentError] = useState<string | null>(null);
+  const [consentBusy, setConsentBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .getConsent()
+      .then(setConsent)
+      .catch((err) => setConsentError(err instanceof Error ? err.message : "Failed to load consent settings"));
+  }, []);
+
+  async function toggleConsent(field: keyof ConsentFlags) {
+    if (!consent) return;
+    setConsentError(null);
+    setConsentBusy(true);
+    try {
+      const updated = await api.updateConsent({ [field]: !consent[field] });
+      setConsent(updated);
+    } catch (err) {
+      setConsentError(err instanceof Error ? err.message : "Failed to update consent settings");
+    } finally {
+      setConsentBusy(false);
+    }
+  }
 
   async function handleCreateOrg(e: React.FormEvent) {
     e.preventDefault();
@@ -115,6 +143,37 @@ export function Admin({ orgId }: { orgId: string }) {
         <p className="muted">
           Created <code>{created.username}</code> ({created.role}) — they can log in immediately.
         </p>
+      )}
+
+      <h2 className="mt-6">Admin — platform support consent</h2>
+      <p className="muted">
+        Optionally let TrustDesk's platform operator view your tickets (read-only) or quality metrics — off by
+        default, independently toggleable, never per-ticket.
+      </p>
+      {consentError && <p className="error">{consentError}</p>}
+      {!consent ? (
+        <p className="muted">Loading…</p>
+      ) : (
+        <div className="mt-2 flex flex-col gap-2 rounded-ds-lg border border-ds-border bg-ds-surface p-4 sm:max-w-md">
+          <label className="flex items-center justify-between gap-3 text-sm">
+            Allow platform support (ticket visibility)
+            <input
+              type="checkbox"
+              checked={consent.allow_platform_support}
+              disabled={consentBusy}
+              onChange={() => toggleConsent("allow_platform_support")}
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            Allow platform metrics visibility
+            <input
+              type="checkbox"
+              checked={consent.allow_platform_metrics}
+              disabled={consentBusy}
+              onChange={() => toggleConsent("allow_platform_metrics")}
+            />
+          </label>
+        </div>
       )}
 
       {orgId === PLATFORM_ORG_ID && (

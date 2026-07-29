@@ -193,6 +193,36 @@ const ROUTE_CASES: RouteCase[] = [
     allowedRoles: ["agent", "manager", "admin"],
     request: (t) => request(app).post("/customers").set("Authorization", `Bearer ${t}`).send({}),
   },
+  {
+    name: "GET /orgs/consent",
+    allowedRoles: ["admin"],
+    request: (t) => request(app).get("/orgs/consent").set("Authorization", `Bearer ${t}`),
+  },
+  {
+    name: "PUT /orgs/consent",
+    allowedRoles: ["admin"],
+    request: (t) => request(app).put("/orgs/consent").set("Authorization", `Bearer ${t}`).send({}),
+  },
+  {
+    name: "GET /platform/tickets",
+    allowedRoles: ["agent", "manager", "admin"],
+    request: (t) => request(app).get("/platform/tickets").set("Authorization", `Bearer ${t}`),
+  },
+  {
+    name: "GET /platform/tickets/:id/messages",
+    allowedRoles: ["agent", "manager", "admin"],
+    request: (t) => request(app).get("/platform/tickets/tkt_does_not_exist/messages").set("Authorization", `Bearer ${t}`),
+  },
+  {
+    name: "GET /platform/metrics",
+    allowedRoles: ["agent", "manager", "admin"],
+    request: (t) => request(app).get("/platform/metrics").set("Authorization", `Bearer ${t}`),
+  },
+  {
+    name: "GET /dashboard/summary",
+    allowedRoles: ["agent", "manager", "admin"],
+    request: (t) => request(app).get("/dashboard/summary").set("Authorization", `Bearer ${t}`),
+  },
 ];
 
 // Single top-level beforeAll/afterAll: this file has two logical groups of

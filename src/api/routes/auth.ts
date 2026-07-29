@@ -47,7 +47,15 @@ authRouter.post("/login", async (req, res, next) => {
         // (hide approve/execute, ingest, invite, etc.) without a second
         // round trip — it's already in the JWT, this just surfaces it.
         token,
-        user: { user_id: user.user_id, display_name: user.display_name, role: user.role, org_id: user.org_id },
+        user: {
+          user_id: user.user_id,
+          display_name: user.display_name,
+          role: user.role,
+          org_id: user.org_id,
+          // V3-7 (LLD_v3 §5): frontend uses this to decide whether to show
+          // the first-login welcome banner without an extra round trip.
+          welcome_seen_at: user.welcome_seen_at ?? null,
+        },
         org: { org_id: org!.org_id, name: org!.name, slug: org!.slug },
       },
     });

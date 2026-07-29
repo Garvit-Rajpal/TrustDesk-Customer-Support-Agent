@@ -71,6 +71,9 @@ describe("POST /tickets/:id/draft-reply", () => {
         },
       ],
       run_id: expect.stringMatching(/^run_/),
+      // V3-5: create_replacement_order requires human approval, so this
+      // draft is not auto-send eligible despite resolution_type "answered".
+      auto_sent: false,
     });
   });
 

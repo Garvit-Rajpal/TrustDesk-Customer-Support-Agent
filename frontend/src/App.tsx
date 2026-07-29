@@ -1,38 +1,28 @@
 import { useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import {
   clearOrg,
   clearRole,
   clearToken,
+  clearWelcomeSeenAt,
   getOrgId,
   getOrgName,
   getRole,
   getToken,
+  getWelcomeSeenAt,
   type Role,
 } from "./api.js";
+import { AuthenticatedApp, type Session } from "./AuthenticatedApp.js";
 import { Login } from "./components/Login.js";
-import { Queue } from "./components/Queue.js";
-import { TicketView } from "./components/TicketView.js";
-import { EvalReport } from "./components/EvalReport.js";
-import { Documents } from "./components/Documents.js";
-import { Admin } from "./components/Admin.js";
-import { QualityDashboard } from "./components/QualityDashboard.js";
-import { Shell, type NavItem } from "./design-system/Shell.js";
+import { Landing } from "./pages/Landing.js";
+import { Signup } from "./pages/Signup.js";
 
-type View =
-  | { name: "queue" }
-  | { name: "ticket"; ticketId: string }
-  | { name: "eval" }
-  | { name: "documents" }
-  | { name: "quality" }
-  | { name: "admin" };
-
-interface Session {
-  displayName: string;
-  role: Role;
-  orgId: string;
-  orgName: string;
-}
-
+// V3-1/V3-8 (HLD_v3 ADR-14/ADR-18, LLD_v3 §6): a genuine public tree now
+// exists (/, /signup, /login) alongside the authenticated app, so plain
+// useState view-switching can no longer deep-link or support back/forward
+// across that boundary — react-router-dom handles the top-level split only;
+// the authenticated app's own internal view-switching (AuthenticatedApp)
+// stays exactly as it was pre-v3, per the plan.
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => {
     const token = getToken();
@@ -41,82 +31,53 @@ export default function App() {
     const orgName = getOrgName();
     // displayName isn't persisted (only role/org are) — on a hard reload
     // this falls back to the role as a label until the user logs in again.
-    return token && role && orgId && orgName ? { displayName: role, role, orgId, orgName } : null;
+    return token && role && orgId && orgName
+      ? { displayName: role, role, orgId, orgName, welcomeSeenAt: getWelcomeSeenAt() }
+      : null;
   });
-  const [view, setView] = useState<View>({ name: "queue" });
 
-  if (!session) {
-    return (
-      <Login
-        onLogin={(displayName, role, orgId, orgName) => setSession({ displayName, role, orgId, orgName })}
-      />
-    );
+  function handleAuthenticated(
+    displayName: string,
+    role: Role,
+    orgId: string,
+    orgName: string,
+    welcomeSeenAt: string | null
+  ) {
+    setSession({ displayName, role, orgId, orgName, welcomeSeenAt });
   }
 
   function handleLogout() {
     clearToken();
     clearRole();
     clearOrg();
+    clearWelcomeSeenAt();
     setSession(null);
-    setView({ name: "queue" });
   }
 
-  const canViewQuality = session.role === "manager" || session.role === "admin";
-
-  // V2-2/V2-3 (LLD_v2 §8): "sidebar ... items filtered by role" — Quality
-  // dashboard is manager+, Admin is admin-only; the backend enforces the
-  // real permission checks independently either way.
-  const navItems: NavItem[] = [
-    {
-      key: "queue",
-      label: "Ticket queue",
-      active: view.name === "queue" || view.name === "ticket",
-      onClick: () => setView({ name: "queue" }),
-    },
-    {
-      key: "documents",
-      label: "Documents",
-      active: view.name === "documents",
-      onClick: () => setView({ name: "documents" }),
-    },
-    {
-      key: "eval",
-      label: "Eval report",
-      active: view.name === "eval",
-      onClick: () => setView({ name: "eval" }),
-    },
-    ...(canViewQuality
-      ? [
-          {
-            key: "quality",
-            label: "Quality dashboard",
-            active: view.name === "quality",
-            onClick: () => setView({ name: "quality" as const }),
-          },
-        ]
-      : []),
-    ...(session.role === "admin"
-      ? [
-          {
-            key: "admin",
-            label: "Admin",
-            active: view.name === "admin",
-            onClick: () => setView({ name: "admin" as const }),
-          },
-        ]
-      : []),
-  ];
-
   return (
-    <Shell navItems={navItems} displayName={session.displayName} orgName={session.orgName} onLogout={handleLogout}>
-      {view.name === "queue" && <Queue onSelect={(ticketId) => setView({ name: "ticket", ticketId })} />}
-      {view.name === "ticket" && (
-        <TicketView ticketId={view.ticketId} onBack={() => setView({ name: "queue" })} role={session.role} />
-      )}
-      {view.name === "documents" && <Documents role={session.role} />}
-      {view.name === "eval" && <EvalReport role={session.role} />}
-      {view.name === "quality" && canViewQuality && <QualityDashboard />}
-      {view.name === "admin" && session.role === "admin" && <Admin orgId={session.orgId} />}
-    </Shell>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/signup" element={<Signup onSignedUp={handleAuthenticated} />} />
+        <Route
+          path="/login"
+          element={
+            session ? <Navigate to="/app" replace /> : <Login onLogin={handleAuthenticated} />
+
+          }
+        />
+        <Route
+          path="/app/*"
+          element={
+            session ? (
+              <AuthenticatedApp session={session} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

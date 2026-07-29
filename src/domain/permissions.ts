@@ -36,6 +36,16 @@ export const PERMISSIONS = {
   "customers:write": ["agent", "manager", "admin"],
   // V3-4 (LLD_v3 §3): human-takeover manual reply — same tier as drafts:send.
   "tickets:reply_manual": ["agent", "manager", "admin"],
+  // V3-6 (LLD_v3 §4): tenant admins manage their own org's consent flags.
+  "orgs:consent:manage": ["admin"],
+  // V3-6 (LLD_v3 §4): role permission alone isn't sufficient — the route
+  // handler additionally enforces org_id === "org_default" (same pattern
+  // POST /orgs already established for deliberately crossing the tenancy
+  // boundary).
+  "platform:tickets:view": ["agent", "manager", "admin"],
+  "platform:metrics:view": ["agent", "manager", "admin"],
+  // V3-7 (LLD_v3 §5): dashboard home — same tier as tickets:view.
+  "dashboard:view": ["agent", "manager", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

@@ -18,6 +18,15 @@ export default defineConfig({
       "/metrics": "http://localhost:3000",
       "/orgs": "http://localhost:3000",
       "/customers": "http://localhost:3000",
+      // GET /signup is the frontend's own page route (react-router) — only
+      // the actual POST /signup API call should proxy to the backend, so a
+      // hard page load / refresh on /signup still serves the SPA shell.
+      "/signup": {
+        target: "http://localhost:3000",
+        bypass: (req) => (req.method === "GET" ? req.url : undefined),
+      },
+      "/platform": "http://localhost:3000",
+      "/dashboard": "http://localhost:3000",
     },
   },
 });

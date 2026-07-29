@@ -11,6 +11,8 @@ import { draftsRouter } from "./api/routes/drafts.js";
 import { metricsRouter } from "./api/routes/metrics.js";
 import { orgsRouter } from "./api/routes/orgs.js";
 import { customersRouter } from "./api/routes/customers.js";
+import { platformRouter } from "./api/routes/platform.js";
+import { dashboardRouter } from "./api/routes/dashboard.js";
 import { signupRouter } from "./api/routes/signup.js";
 import { authMiddleware } from "./api/middleware/auth.js";
 import { tenancyMiddleware } from "./api/middleware/tenancy.js";
@@ -51,6 +53,12 @@ export function buildApp(modelAdapter: ModelAdapter): Express {
   // req.orgContext is simply unused by the handler) and keeps every
   // authenticated route uniform.
   app.use("/orgs", authMiddleware, tenancyMiddleware, orgsRouter);
+  // V3-6 (LLD_v3 §4, HLD_v3 ADR-16): tenancyMiddleware still runs (every
+  // caller needs a normal req.orgContext to prove who they are / that
+  // they're org_default) — the handlers below construct a second, separate
+  // OrgContext for the target org they're reading, on purpose.
+  app.use("/platform", authMiddleware, tenancyMiddleware, platformRouter);
+  app.use("/dashboard", authMiddleware, tenancyMiddleware, dashboardRouter);
 
   app.use(errorHandler);
 

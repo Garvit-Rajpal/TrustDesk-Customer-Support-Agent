@@ -13,6 +13,10 @@ export const Org = z.object({
   slug: z.string(),
   vertical: Vertical,
   created_at: z.string(),
+  // V3-6 (LLD_v3 §4, HLD_v3 ADR-16): org-wide, tenant-controlled consent
+  // flags gating org_default's read-only cross-org platform-support view.
+  allow_platform_support: z.boolean(),
+  allow_platform_metrics: z.boolean(),
 });
 export type Org = z.infer<typeof Org>;
 

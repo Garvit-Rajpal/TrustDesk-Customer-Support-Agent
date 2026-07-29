@@ -38,6 +38,19 @@ export type DraftOutcome = {
   recommendedActions: DraftRecommendedAction[];
 };
 
+// V3-5 (LLD_v3 §3, HLD_v3 ADR-15, invariant #10): the auto-send decision is
+// deterministic code over the draft's already-guardrail-passed output, never
+// the model itself — same "model proposes, deterministic code disposes"
+// rule as requires_human_approval (invariant #1), just applied one step
+// further down the pipeline. Escalated/refused_by_policy drafts, and any
+// draft recommending an approval-gated action, always wait for a human.
+export function evaluateAutoSend(outcome: DraftOutcome): boolean {
+  return (
+    outcome.resolutionType === "answered" &&
+    outcome.recommendedActions.every((action) => !action.requires_human_approval)
+  );
+}
+
 function tryParseDraft(raw: string): RawDraftOutput | null {
   let parsedJson: unknown;
   try {

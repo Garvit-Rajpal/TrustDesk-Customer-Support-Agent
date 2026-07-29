@@ -67,16 +67,21 @@ describe("human takeover (V3-4)", () => {
     expect(draftAttempt.status).toBe(409);
   });
 
-  it("a second manual reply on an already-human-owned ticket is idempotent (still human_owned, no error)", async () => {
+  it("a second manual reply works directly from customer_replied, no re-triage needed (still human_owned, no error)", async () => {
     // tkt_9002 is awaiting_customer after the prior test — simulate a
-    // customer reply (-> customer_replied), then re-triage (still allowed
-    // on a human-owned ticket, only draft-reply is blocked) to reach
-    // in_progress, the only status a reply can legally be sent from again.
+    // customer reply (-> customer_replied). A human reply bypasses the AI
+    // pipeline entirely, so — unlike an AI draft — it does NOT need a fresh
+    // triage to get back to in_progress first; customer_replied is a legal
+    // source for a manual reply directly.
     await request(app)
       .post("/tickets/tkt_9002/messages/simulate-inbound")
       .set("Authorization", `Bearer ${agentToken}`)
       .send({ body: "Thanks, still waiting." });
-    await request(app).post("/tickets/tkt_9002/triage").set("Authorization", `Bearer ${agentToken}`);
+
+    const ticketBeforeReply = await request(app)
+      .get("/tickets/tkt_9002")
+      .set("Authorization", `Bearer ${agentToken}`);
+    expect(ticketBeforeReply.body.data.ticket.status).toBe("customer_replied");
 
     const second = await request(app)
       .post("/tickets/tkt_9002/messages/reply")
@@ -87,6 +92,7 @@ describe("human takeover (V3-4)", () => {
     const ticket = await request(app)
       .get("/tickets/tkt_9002")
       .set("Authorization", `Bearer ${agentToken}`);
+    expect(ticket.body.data.ticket.status).toBe("awaiting_customer");
     expect(ticket.body.data.ticket.human_owned).toBe(true);
   });
 

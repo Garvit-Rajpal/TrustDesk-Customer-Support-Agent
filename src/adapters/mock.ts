@@ -16,7 +16,12 @@ export class MockModelAdapter implements ModelAdapter {
   constructor(private readonly scenarios: Record<string, MockResponseSpec | MockResponseSpec[]>) {}
 
   async complete(request: ModelRequest): Promise<ModelResponse> {
-    const spec = this.scenarios[request.scenario];
+    // V3-5: exact ticket_id-keyed scenarios take priority; a `*:<kind>`
+    // wildcard (e.g. "*:triage") is the fallback for tickets whose id can't
+    // be known ahead of time (freshly created via POST /tickets), so a test
+    // can still script the ticket-creation auto-pipeline's model calls.
+    const wildcardKey = `*:${request.scenario.split(":")[1] ?? ""}`;
+    const spec = this.scenarios[request.scenario] ?? this.scenarios[wildcardKey];
     if (!spec) {
       throw new Error(`MockModelAdapter: no scenario registered for "${request.scenario}"`);
     }

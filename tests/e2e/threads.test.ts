@@ -153,13 +153,11 @@ describe("V2-4 threads + status machine", () => {
       expect(latestInboundId).toBeDefined();
     });
 
-    it("sends the draft: draft -> sent, ticket -> awaiting_customer, outbound message appended", async () => {
-      const send = await request(app)
-        .post(`/drafts/${draftId}/send`)
-        .set("Authorization", `Bearer ${token}`);
-      expect(send.status).toBe(200);
-      expect(send.body.data.message).toMatchObject({ direction: "outbound", draft_id: draftId });
-
+    // V3-5 (LLD_v3 §3): tkt_9002's mock draft is resolution_type "answered"
+    // recommending open_carrier_investigation, a no-approval-required tool —
+    // evaluateAutoSend() makes the immediately-preceding draft-reply call
+    // auto-send it, so by this point the ticket is already awaiting_customer.
+    it("draft-reply auto-sent: draft -> sent, ticket -> awaiting_customer, outbound message appended", async () => {
       const ticket = await request(app)
         .get("/tickets/tkt_9002")
         .set("Authorization", `Bearer ${token}`);
@@ -169,9 +167,10 @@ describe("V2-4 threads + status machine", () => {
         .get("/tickets/tkt_9002/messages")
         .set("Authorization", `Bearer ${token}`);
       expect(messages.body.data.messages).toHaveLength(2);
+      expect(messages.body.data.messages[1]).toMatchObject({ direction: "outbound", draft_id: draftId });
     });
 
-    it("409s sending the same draft again (ticket no longer in_progress)", async () => {
+    it("409s sending the already-auto-sent draft explicitly (ticket no longer in_progress)", async () => {
       const res = await request(app)
         .post(`/drafts/${draftId}/send`)
         .set("Authorization", `Bearer ${token}`);
