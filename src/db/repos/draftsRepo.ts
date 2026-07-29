@@ -16,6 +16,16 @@ export interface DraftRow extends NewDraft {
   created_at: string;
 }
 
+export async function getDraftById(draftId: string): Promise<DraftRow | null> {
+  const { rows } = await pool.query(
+    `SELECT draft_id, ticket_id, run_id, status, resolution_type, body, citations,
+            recommended_actions, created_at::text
+     FROM drafts WHERE draft_id = $1`,
+    [draftId]
+  );
+  return rows[0] ?? null;
+}
+
 export async function insertDraft(draft: NewDraft): Promise<DraftRow> {
   const { rows } = await pool.query(
     `INSERT INTO drafts (draft_id, ticket_id, run_id, resolution_type, body, citations, recommended_actions)

@@ -3,11 +3,12 @@ import { CreateToolActionRequest, ApprovalDecisionRequest } from "../../domain/t
 import { getTicketById } from "../../db/repos/ticketsRepo.js";
 import { decideToolAction, executeToolAction, requestToolAction } from "../../services/toolActions.js";
 import { sendError } from "../errorEnvelope.js";
+import { requirePermission } from "../middleware/permissions.js";
 
 export const toolActionsRouter = Router();
 
 // LLD §4.8: validation ladder, idempotent by payload.idempotency_key.
-toolActionsRouter.post("/", async (req, res, next) => {
+toolActionsRouter.post("/", requirePermission("tool_actions:request"), async (req, res, next) => {
   try {
     const parsed = CreateToolActionRequest.safeParse(req.body);
     if (!parsed.success) {
@@ -41,7 +42,7 @@ toolActionsRouter.post("/", async (req, res, next) => {
 });
 
 // LLD §4.9: legal only from approval_required; reviewer_id from the JWT.
-toolActionsRouter.post("/:id/approve", async (req, res, next) => {
+toolActionsRouter.post("/:id/approve", requirePermission("tool_actions:approve"), async (req, res, next) => {
   try {
     await handleDecision(req.params.id, req, res, "approved");
   } catch (err) {
@@ -49,7 +50,7 @@ toolActionsRouter.post("/:id/approve", async (req, res, next) => {
   }
 });
 
-toolActionsRouter.post("/:id/reject", async (req, res, next) => {
+toolActionsRouter.post("/:id/reject", requirePermission("tool_actions:approve"), async (req, res, next) => {
   try {
     await handleDecision(req.params.id, req, res, "rejected");
   } catch (err) {
@@ -92,7 +93,7 @@ async function handleDecision(
 }
 
 // LLD §4.10: legal only from approved; re-executing an executed action replays.
-toolActionsRouter.post("/:id/execute", async (req, res, next) => {
+toolActionsRouter.post("/:id/execute", requirePermission("tool_actions:approve"), async (req, res, next) => {
   try {
     const outcome = await executeToolAction(req.params.id);
 

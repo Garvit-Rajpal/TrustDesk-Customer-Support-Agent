@@ -11,9 +11,11 @@ describe("eval-runs API", () => {
   beforeAll(async () => {
     await truncateAll();
     await runSeed();
+    // V2-2 (LLD_v2 §3): running an eval set is admin-only; admin can also
+    // do everything an agent can (fetch by id), so one token suffices here.
     const login = await request(app)
       .post("/auth/login")
-      .send({ username: "agent1", password: "agent123" });
+      .send({ username: "admin1", password: "admin123" });
     token = login.body.data.token;
   });
 

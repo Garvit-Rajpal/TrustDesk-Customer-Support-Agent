@@ -6,6 +6,9 @@ import { documentsRouter } from "./api/routes/documents.js";
 import { agentRunsRouter } from "./api/routes/agentRuns.js";
 import { toolActionsRouter } from "./api/routes/toolActions.js";
 import { buildEvalRunsRouter } from "./api/routes/evalRuns.js";
+import { usersRouter } from "./api/routes/users.js";
+import { draftsRouter } from "./api/routes/drafts.js";
+import { metricsRouter } from "./api/routes/metrics.js";
 import { authMiddleware } from "./api/middleware/auth.js";
 import { errorHandler } from "./api/middleware/errors.js";
 import type { ModelAdapter } from "./adapters/modelAdapter.js";
@@ -29,6 +32,9 @@ export function buildApp(modelAdapter: ModelAdapter): Express {
   app.use("/agent-runs", authMiddleware, agentRunsRouter);
   app.use("/tool-actions", authMiddleware, toolActionsRouter);
   app.use("/eval-runs", authMiddleware, buildEvalRunsRouter(modelAdapter));
+  app.use("/users", authMiddleware, usersRouter);
+  app.use("/drafts", authMiddleware, draftsRouter);
+  app.use("/metrics", authMiddleware, metricsRouter);
 
   app.use(errorHandler);
 

@@ -1,15 +1,24 @@
 import { useEffect, useState } from "react";
-import { api, type DraftResult, type TicketDetail, type TriageResult } from "../api.js";
+import { api, type DraftResult, type Role, type TicketDetail, type TriageResult } from "../api.js";
 import { ActionPanel } from "./ActionPanel.js";
 import { TracePanel } from "./TracePanel.js";
 import { RunStepper } from "./RunStepper.js";
+import { FeedbackControl } from "./FeedbackControl.js";
 
 type TriageDisplay = Pick<
   TriageResult,
   "category" | "priority" | "sentiment" | "should_escalate" | "reason_summary"
 >;
 
-export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () => void }) {
+export function TicketView({
+  ticketId,
+  onBack,
+  role,
+}: {
+  ticketId: string;
+  onBack: () => void;
+  role: Role;
+}) {
   const [detail, setDetail] = useState<TicketDetail | null>(null);
   const [triage, setTriage] = useState<TriageDisplay | null>(null);
   // Separate from `triage` because a triage loaded from the stored ticket
@@ -143,6 +152,7 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
           <p className="muted">Citations: {draft.citations.length > 0 ? draft.citations.join(", ") : "none"}</p>
           <RunStepper ticketId={ticketId} runId={draft.run_id} />
           <TracePanel runId={draft.run_id} />
+          <FeedbackControl draftId={draft.draft_id} />
 
           {draft.recommended_actions.length === 0 && <p className="muted">No recommended actions.</p>}
           {draft.recommended_actions.map((action) => (
@@ -152,6 +162,7 @@ export function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
               order={order}
               customer={customer}
               action={action}
+              role={role}
             />
           ))}
         </section>

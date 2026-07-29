@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, type EvalReport as EvalReportData } from "../api.js";
+import { api, type EvalReport as EvalReportData, type Role } from "../api.js";
 
 const METRIC_LABELS: Record<string, string> = {
   triage_accuracy: "Triage accuracy",
@@ -8,7 +8,7 @@ const METRIC_LABELS: Record<string, string> = {
   escalation_accuracy: "Escalation accuracy",
 };
 
-export function EvalReport() {
+export function EvalReport({ role }: { role: Role }) {
   const [report, setReport] = useState<EvalReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -29,9 +29,14 @@ export function EvalReport() {
     <div>
       <h2>Eval report</h2>
       <p className="muted">Runs every case in data/eval_cases.jsonl through the live triage + draft pipeline.</p>
-      <button disabled={busy} onClick={handleRun}>
-        {busy ? "Running…" : "Run all eval cases"}
-      </button>
+      {/* V2-2 (LLD_v2 §3): running the eval set is admin-only. */}
+      {role === "admin" ? (
+        <button disabled={busy} onClick={handleRun}>
+          {busy ? "Running…" : "Run all eval cases"}
+        </button>
+      ) : (
+        <p className="muted">Only admins can trigger an eval run.</p>
+      )}
       {error && <p className="error">{error}</p>}
 
       {report && (

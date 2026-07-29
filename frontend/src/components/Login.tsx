@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { api, setToken } from "../api.js";
+import { api, setToken, setRole, type Role } from "../api.js";
 
-export function Login({ onLogin }: { onLogin: (displayName: string) => void }) {
+export function Login({ onLogin }: { onLogin: (displayName: string, role: Role) => void }) {
   const [username, setUsername] = useState("agent1");
   const [password, setPassword] = useState("agent123");
   const [error, setError] = useState<string | null>(null);
@@ -14,7 +14,8 @@ export function Login({ onLogin }: { onLogin: (displayName: string) => void }) {
     try {
       const result = await api.login(username, password);
       setToken(result.token);
-      onLogin(result.user.display_name);
+      setRole(result.user.role);
+      onLogin(result.user.display_name, result.user.role);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -26,7 +27,7 @@ export function Login({ onLogin }: { onLogin: (displayName: string) => void }) {
     <div className="login-page">
       <form className="login-form" onSubmit={handleSubmit}>
         <h1>TrustDesk</h1>
-        <p className="hint">Demo accounts: agent1 / agent123, manager1 / manager123</p>
+        <p className="hint">Demo accounts: agent1/agent123, manager1/manager123, admin1/admin123</p>
         <label>
           Username
           <input value={username} onChange={(e) => setUsername(e.target.value)} />

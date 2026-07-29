@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { api, type DocumentSearchResult, type KbDocument } from "../api.js";
+import { api, type DocumentSearchResult, type KbDocument, type Role } from "../api.js";
 
-export function Documents() {
+export function Documents({ role }: { role: Role }) {
   const [documents, setDocuments] = useState<KbDocument[]>([]);
   const [selected, setSelected] = useState<KbDocument | null>(null);
   const [query, setQuery] = useState("");
@@ -96,16 +96,21 @@ export function Documents() {
           </tbody>
         </table>
 
-        <button className="link-button" onClick={() => setShowIngest((v) => !v)}>
-          {showIngest ? "Hide" : "+ Ingest new document"}
-        </button>
-        {showIngest && (
-          <IngestForm
-            onIngested={() => {
-              setShowIngest(false);
-              loadDocuments();
-            }}
-          />
+        {/* V2-2 (LLD_v2 §3): document ingestion is admin-only. */}
+        {role === "admin" && (
+          <>
+            <button className="link-button" onClick={() => setShowIngest((v) => !v)}>
+              {showIngest ? "Hide" : "+ Ingest new document"}
+            </button>
+            {showIngest && (
+              <IngestForm
+                onIngested={() => {
+                  setShowIngest(false);
+                  loadDocuments();
+                }}
+              />
+            )}
+          </>
         )}
       </div>
 

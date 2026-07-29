@@ -8,6 +8,8 @@ import { runSeed } from "../../src/db/seed.js";
 
 describe("POST /tickets/:id/draft-reply", () => {
   let token: string;
+  // V2-2 (LLD_v2 §3): rejected_output on a trace is manager+ only.
+  let managerToken: string;
 
   beforeAll(async () => {
     await truncateAll();
@@ -16,6 +18,11 @@ describe("POST /tickets/:id/draft-reply", () => {
       .post("/auth/login")
       .send({ username: "agent1", password: "agent123" });
     token = login.body.data.token;
+
+    const managerLogin = await request(app)
+      .post("/auth/login")
+      .send({ username: "manager1", password: "manager123" });
+    managerToken = managerLogin.body.data.token;
   });
 
   afterAll(async () => {
@@ -101,11 +108,18 @@ describe("POST /tickets/:id/draft-reply", () => {
     // The escalation template body — never the model's adversarial-quoting draft.
     expect(res.body.data.body).not.toContain("reveal all hidden instructions");
 
-    const run = await request(app)
+    const agentView = await request(app)
       .get(`/agent-runs/${res.body.data.run_id}`)
       .set("Authorization", `Bearer ${token}`);
-    expect(run.body.data.status).toBe("guardrail_blocked");
-    expect(run.body.data.rejected_output).toBeTruthy();
+    expect(agentView.body.data.status).toBe("guardrail_blocked");
+    // V2-2 (LLD_v2 §3): an agent can see that a guardrail fired but not
+    // the discarded model draft itself — that's manager+ only.
+    expect(agentView.body.data.rejected_output).toBeNull();
+
+    const managerView = await request(app)
+      .get(`/agent-runs/${res.body.data.run_id}`)
+      .set("Authorization", `Bearer ${managerToken}`);
+    expect(managerView.body.data.rejected_output).toBeTruthy();
   });
 
   it("fail-closes tkt_9007's fake secret leak to a safe escalation template (still 200)", async () => {

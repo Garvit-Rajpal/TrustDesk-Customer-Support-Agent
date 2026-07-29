@@ -13,6 +13,9 @@ import { runSeed } from "../../src/db/seed.js";
 
 describe("tool-actions lifecycle", () => {
   let token: string;
+  // V2-2 (LLD_v2 §3): approve/reject/execute are manager+ only; requesting
+  // an action stays agent+.
+  let managerToken: string;
 
   beforeEach(async () => {
     await truncateAll();
@@ -21,6 +24,12 @@ describe("tool-actions lifecycle", () => {
       .post("/auth/login")
       .send({ username: "agent1", password: "agent123" });
     token = login.body.data.token;
+
+    const managerLogin = await request(app)
+      .post("/auth/login")
+      .send({ username: "manager1", password: "manager123" });
+    managerToken = managerLogin.body.data.token;
+
     await request(app).post("/tickets/tkt_9001/triage").set("Authorization", `Bearer ${token}`);
     await request(app).post("/tickets/tkt_9002/triage").set("Authorization", `Bearer ${token}`);
   });
@@ -74,14 +83,14 @@ describe("tool-actions lifecycle", () => {
 
     const approved = await request(app)
       .post(`/tool-actions/${actionId}/approve`)
-      .set("Authorization", `Bearer ${token}`)
+      .set("Authorization", `Bearer ${managerToken}`)
       .send({ reason: "Confirmed damaged item, within return window." });
     expect(approved.status).toBe(200);
     expect(approved.body.data.status).toBe("approved");
 
     const executed = await request(app)
       .post(`/tool-actions/${actionId}/execute`)
-      .set("Authorization", `Bearer ${token}`);
+      .set("Authorization", `Bearer ${managerToken}`);
     expect(executed.status).toBe(200);
     expect(executed.body.data.status).toBe("executed");
     expect(executed.body.data.execution_result).toHaveProperty("replacement_order_id");
@@ -106,7 +115,7 @@ describe("tool-actions lifecycle", () => {
 
     const executed = await request(app)
       .post(`/tool-actions/${created.body.data.action_id}/execute`)
-      .set("Authorization", `Bearer ${token}`);
+      .set("Authorization", `Bearer ${managerToken}`);
     expect(executed.status).toBe(200);
     expect(executed.body.data.status).toBe("executed");
   });
@@ -129,19 +138,19 @@ describe("tool-actions lifecycle", () => {
 
     const executeTooSoon = await request(app)
       .post(`/tool-actions/${actionId}/execute`)
-      .set("Authorization", `Bearer ${token}`);
+      .set("Authorization", `Bearer ${managerToken}`);
     expect(executeTooSoon.status).toBe(409);
 
     const rejected = await request(app)
       .post(`/tool-actions/${actionId}/reject`)
-      .set("Authorization", `Bearer ${token}`)
+      .set("Authorization", `Bearer ${managerToken}`)
       .send({ reason: "not eligible" });
     expect(rejected.status).toBe(200);
     expect(rejected.body.data.status).toBe("rejected");
 
     const approveAfterReject = await request(app)
       .post(`/tool-actions/${actionId}/approve`)
-      .set("Authorization", `Bearer ${token}`)
+      .set("Authorization", `Bearer ${managerToken}`)
       .send({ reason: "changed my mind" });
     expect(approveAfterReject.status).toBe(409);
   });
@@ -175,13 +184,13 @@ describe("tool-actions lifecycle", () => {
   it("404s approve/execute for an unknown action id", async () => {
     const approve = await request(app)
       .post("/tool-actions/act_does_not_exist/approve")
-      .set("Authorization", `Bearer ${token}`)
+      .set("Authorization", `Bearer ${managerToken}`)
       .send({ reason: "x" });
     expect(approve.status).toBe(404);
 
     const execute = await request(app)
       .post("/tool-actions/act_does_not_exist/execute")
-      .set("Authorization", `Bearer ${token}`);
+      .set("Authorization", `Bearer ${managerToken}`);
     expect(execute.status).toBe(404);
   });
 });

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, type RecommendedAction, type ToolActionResult } from "../api.js";
+import { api, type RecommendedAction, type Role, type ToolActionResult } from "../api.js";
 
 // Best-effort per-tool payload pre-fill from data already on screen
 // (ticket/order/customer). This does NOT replace the tool catalog's
@@ -40,12 +40,16 @@ export function ActionPanel({
   order,
   customer,
   action,
+  role,
 }: {
   ticketId: string;
   order: Record<string, unknown> | null;
   customer: Record<string, unknown> | null;
   action: RecommendedAction;
+  role: Role;
 }) {
+  // V2-2 (LLD_v2 §3): approve/reject/execute are manager+ only.
+  const canDecide = role === "manager" || role === "admin";
   const [payloadText, setPayloadText] = useState(() =>
     JSON.stringify(defaultPayload(action.tool_name, ticketId, action.reason, order, customer), null, 2)
   );
@@ -106,23 +110,29 @@ export function ActionPanel({
             {result.replayed && <span className="badge">replayed</span>}
           </p>
 
-          {result.status === "approval_required" && (
-            <div className="decision-row">
-              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" />
-              <button disabled={busy} onClick={() => run(() => api.approveAction(result.action_id, reason))}>
-                Approve
-              </button>
-              <button disabled={busy} onClick={() => run(() => api.rejectAction(result.action_id, reason))}>
-                Reject
-              </button>
-            </div>
-          )}
+          {result.status === "approval_required" &&
+            (canDecide ? (
+              <div className="decision-row">
+                <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" />
+                <button disabled={busy} onClick={() => run(() => api.approveAction(result.action_id, reason))}>
+                  Approve
+                </button>
+                <button disabled={busy} onClick={() => run(() => api.rejectAction(result.action_id, reason))}>
+                  Reject
+                </button>
+              </div>
+            ) : (
+              <p className="muted">Awaiting manager approval.</p>
+            ))}
 
-          {result.status === "approved" && (
-            <button disabled={busy} onClick={() => run(() => api.executeAction(result.action_id))}>
-              Execute
-            </button>
-          )}
+          {result.status === "approved" &&
+            (canDecide ? (
+              <button disabled={busy} onClick={() => run(() => api.executeAction(result.action_id))}>
+                Execute
+              </button>
+            ) : (
+              <p className="muted">Approved — awaiting a manager to execute.</p>
+            ))}
 
           {(result.status === "executed" || result.status === "failed") && result.execution_result != null && (
             <pre className="json-panel">{JSON.stringify(result.execution_result, null, 2)}</pre>

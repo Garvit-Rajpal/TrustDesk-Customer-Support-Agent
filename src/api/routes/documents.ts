@@ -3,11 +3,12 @@ import { IngestRequest } from "../../domain/documentTypes.js";
 import { upsertKbDocument, getKbDocumentById, listKbDocuments } from "../../db/repos/kbDocumentsRepo.js";
 import { searchDocuments } from "../../services/retrieval.js";
 import { sendError } from "../errorEnvelope.js";
+import { requirePermission } from "../middleware/permissions.js";
 
 export const documentsRouter = Router();
 
 // LLD §4.2: upsert by doc_id when checksum differs; re-runnable.
-documentsRouter.post("/ingest", async (req, res, next) => {
+documentsRouter.post("/ingest", requirePermission("documents:ingest"), async (req, res, next) => {
   try {
     const parsed = IngestRequest.safeParse(req.body);
     if (!parsed.success) {
@@ -30,7 +31,7 @@ documentsRouter.post("/ingest", async (req, res, next) => {
 });
 
 // LLD §4.3: FTS via websearch_to_tsquery, ts_rank ordering, top 5.
-documentsRouter.get("/search", async (req, res, next) => {
+documentsRouter.get("/search", requirePermission("documents:view"), async (req, res, next) => {
   try {
     const q = req.query.q;
     if (typeof q !== "string" || q.trim().length === 0) {
@@ -46,7 +47,7 @@ documentsRouter.get("/search", async (req, res, next) => {
   }
 });
 
-documentsRouter.get("/", async (_req, res, next) => {
+documentsRouter.get("/", requirePermission("documents:view"), async (_req, res, next) => {
   try {
     const documents = await listKbDocuments();
     res.status(200).json({ data: { documents } });
@@ -55,7 +56,7 @@ documentsRouter.get("/", async (_req, res, next) => {
   }
 });
 
-documentsRouter.get("/:docId", async (req, res, next) => {
+documentsRouter.get("/:docId", requirePermission("documents:view"), async (req, res, next) => {
   try {
     const doc = await getKbDocumentById(req.params.docId);
     if (!doc) {

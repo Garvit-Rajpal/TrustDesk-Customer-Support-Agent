@@ -13,6 +13,9 @@ export default defineConfig({
       "/agent-runs": "http://localhost:3000",
       "/tool-actions": "http://localhost:3000",
       "/eval-runs": "http://localhost:3000",
+      "/users": "http://localhost:3000",
+      "/drafts": "http://localhost:3000",
+      "/metrics": "http://localhost:3000",
     },
   },
 });

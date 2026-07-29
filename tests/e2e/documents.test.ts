@@ -8,6 +8,8 @@ import { runSeed } from "../../src/db/seed.js";
 
 describe("documents API", () => {
   let token: string;
+  // V2-2 (LLD_v2 §3): document ingestion is admin-only.
+  let adminToken: string;
 
   beforeAll(async () => {
     await truncateAll();
@@ -16,6 +18,11 @@ describe("documents API", () => {
       .post("/auth/login")
       .send({ username: "agent1", password: "agent123" });
     token = login.body.data.token;
+
+    const adminLogin = await request(app)
+      .post("/auth/login")
+      .send({ username: "admin1", password: "admin123" });
+    adminToken = adminLogin.body.data.token;
   });
 
   afterAll(async () => {
@@ -26,7 +33,7 @@ describe("documents API", () => {
     it("ingests a new document, preserving doc_id verbatim", async () => {
       const res = await request(app)
         .post("/documents/ingest")
-        .set("Authorization", `Bearer ${token}`)
+        .set("Authorization", `Bearer ${adminToken}`)
         .send({
           documents: [
             {
@@ -56,7 +63,7 @@ describe("documents API", () => {
       };
       const first = await request(app)
         .post("/documents/ingest")
-        .set("Authorization", `Bearer ${token}`)
+        .set("Authorization", `Bearer ${adminToken}`)
         .send(payload);
       expect(first.body.data.ingested).toBe(0); // already ingested above, checksum unchanged
       expect(first.body.data.document_ids).toEqual(["KB-TEST-999"]);

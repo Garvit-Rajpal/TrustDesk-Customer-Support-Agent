@@ -35,6 +35,15 @@ const DEMO_USERS = [
     display_name: "Rohan Gupta",
     role: "manager",
   },
+  // V2-2 (ADR-9): admin is the only role that can invite new users
+  // (POST /users/invite) — bootstrap needs one to exist without going
+  // through that endpoint.
+  {
+    username: "admin1",
+    password: process.env.SEED_ADMIN_PASSWORD ?? "admin123",
+    display_name: "Ananya Iyer",
+    role: "admin",
+  },
 ] as const;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

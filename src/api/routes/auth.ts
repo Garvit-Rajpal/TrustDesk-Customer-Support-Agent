@@ -32,8 +32,11 @@ authRouter.post("/login", async (req, res, next) => {
     const token = signToken({ sub: user.user_id, name: user.display_name, role: user.role });
     res.status(200).json({
       data: {
+        // V2-2 (LLD_v2 §3): role rides along so the frontend can gate UI
+        // (hide approve/execute, ingest, invite, etc.) without a second
+        // round trip — it's already in the JWT, this just surfaces it.
         token,
-        user: { user_id: user.user_id, display_name: user.display_name },
+        user: { user_id: user.user_id, display_name: user.display_name, role: user.role },
       },
     });
   } catch (err) {

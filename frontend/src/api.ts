@@ -4,6 +4,9 @@
 // mirrors backend response shapes by hand rather than sharing types across
 // a package boundary that doesn't otherwise exist.
 const TOKEN_KEY = "trustdesk_token";
+const ROLE_KEY = "trustdesk_role";
+
+export type Role = "agent" | "manager" | "admin";
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -13,6 +16,20 @@ export function setToken(token: string): void {
 }
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+// V2-2 (LLD_v2 §3): the frontend's only source of "what can this user do" —
+// mirrors the JWT's role claim so nav/buttons can gate without a round
+// trip. The backend's requirePermission() is the actual enforcement; this
+// is UI convenience only, never trusted for anything security-relevant.
+export function getRole(): Role | null {
+  return localStorage.getItem(ROLE_KEY) as Role | null;
+}
+export function setRole(role: Role): void {
+  localStorage.setItem(ROLE_KEY, role);
+}
+export function clearRole(): void {
+  localStorage.removeItem(ROLE_KEY);
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -34,7 +51,21 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export interface LoginResult {
   token: string;
-  user: { user_id: string; display_name: string };
+  user: { user_id: string; display_name: string; role: Role };
+}
+
+export interface InviteUserInput {
+  username: string;
+  password: string;
+  display_name: string;
+  role?: Role;
+}
+
+export interface InviteUserResult {
+  user_id: string;
+  username: string;
+  display_name: string;
+  role: Role;
 }
 
 export interface TicketSummary {
@@ -162,6 +193,34 @@ export interface IngestDocumentInput {
   audience?: string;
 }
 
+export interface SubmitFeedbackInput {
+  rating: number;
+  reason?: string;
+  corrected_response?: string;
+}
+
+export interface FeedbackResult {
+  feedback_id: string;
+  ticket_id: string;
+  draft_id: string;
+  reviewer_id: string;
+  rating: number;
+  reason: string | null;
+  corrected_response: string | null;
+  created_at: string;
+}
+
+export interface CategoryMetrics {
+  draft_acceptance_rate: number | null;
+  action_approval_rate: number | null;
+  avg_rating: number | null;
+  guardrail_block_rate: number | null;
+}
+
+export interface QualityReport extends CategoryMetrics {
+  by_category: Record<string, CategoryMetrics>;
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<LoginResult>("POST", "/auth/login", { username, password }),
@@ -194,4 +253,10 @@ export const api = {
     ),
   ingestDocuments: (documents: IngestDocumentInput[]) =>
     request<{ ingested: number; document_ids: string[] }>("POST", "/documents/ingest", { documents }),
+
+  inviteUser: (input: InviteUserInput) => request<InviteUserResult>("POST", "/users/invite", input),
+
+  submitFeedback: (draftId: string, input: SubmitFeedbackInput) =>
+    request<FeedbackResult>("POST", `/drafts/${draftId}/feedback`, input),
+  getAgentQuality: () => request<QualityReport>("GET", "/metrics/agent-quality"),
 };

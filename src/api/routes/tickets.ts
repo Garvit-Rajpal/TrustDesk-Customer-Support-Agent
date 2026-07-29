@@ -12,6 +12,7 @@ import { getAgentRunById } from "../../db/repos/agentRunsRepo.js";
 import { listRunEventsByRunId } from "../../db/repos/runEventsRepo.js";
 import { isTerminalEvent, pipelineEventBus } from "../../services/events/pipelineEventBus.js";
 import type { RunEvent } from "../../domain/schemas.js";
+import { requirePermission } from "../middleware/permissions.js";
 
 // Factory rather than a module-level Router: the triage route needs a
 // ModelAdapter, and tests must be able to inject a MockModelAdapter with
@@ -22,7 +23,7 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
 
   // LLD §4.4: list returns ticket summaries + triage-if-present. Expected
   // labels never appear here (separate table, no join — HLD invariant #4).
-  ticketsRouter.get("/", async (req, res, next) => {
+  ticketsRouter.get("/", requirePermission("tickets:view"), async (req, res, next) => {
     try {
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
       const category = typeof req.query.category === "string" ? req.query.category : undefined;
@@ -34,7 +35,7 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
   });
 
   // LLD §4.4: fetch returns { ticket, customer, order }.
-  ticketsRouter.get("/:id", async (req, res, next) => {
+  ticketsRouter.get("/:id", requirePermission("tickets:view"), async (req, res, next) => {
     try {
       const ticket = await getTicketById(req.params.id);
       if (!ticket) {
@@ -50,7 +51,7 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
   });
 
   // LLD §4.5: create ticket (demo). FK validation → 400. body stored verbatim.
-  ticketsRouter.post("/", async (req, res, next) => {
+  ticketsRouter.post("/", requirePermission("tickets:write"), async (req, res, next) => {
     try {
       const parsed = CreateTicketRequest.safeParse(req.body);
       if (!parsed.success) {
@@ -99,7 +100,7 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
 
   // LLD §4.6: run triage. No body. 409 is NOT used here — re-triage is
   // allowed (draft-reply is what requires prior triage, HLD invariant #9).
-  ticketsRouter.post("/:id/triage", async (req, res, next) => {
+  ticketsRouter.post("/:id/triage", requirePermission("tickets:triage"), async (req, res, next) => {
     try {
       const ticket = await getTicketById(req.params.id);
       if (!ticket) {
@@ -135,7 +136,7 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
   // LLD §4.7: 409 if not yet triaged (HLD invariant #9: triage → retrieval →
   // draft). L3 fail-closed is NOT an HTTP error — 200 with the substituted
   // template draft, since the flow degraded safely rather than failing.
-  ticketsRouter.post("/:id/draft-reply", async (req, res, next) => {
+  ticketsRouter.post("/:id/draft-reply", requirePermission("tickets:draft"), async (req, res, next) => {
     try {
       const ticket = await getTicketById(req.params.id);
       if (!ticket) {
@@ -175,7 +176,7 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
   // synchronously before their POST response returns (HLD invariant #6), so
   // a client only ever sees the replay path; the live path exists for
   // concurrent viewers that open the stream while a run is still executing.
-  ticketsRouter.get("/:id/runs/:runId/events", async (req, res, next) => {
+  ticketsRouter.get("/:id/runs/:runId/events", requirePermission("runs:view"), async (req, res, next) => {
     try {
       const ticket = await getTicketById(req.params.id);
       if (!ticket) {

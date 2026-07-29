@@ -17,6 +17,17 @@ export async function getUserByUsername(username: string): Promise<UserRow | nul
   return rows[0] ?? null;
 }
 
+// V2-2 (LLD_v2 §3, ADR-9): POST /users/invite's write path — a real INSERT,
+// not upsertUser's seed-only ON CONFLICT upsert. Unique-violation on
+// username is left to the caller (route maps it to 409 CONFLICT).
+export async function insertUser(user: UserRow): Promise<void> {
+  await pool.query(
+    `INSERT INTO users (user_id, username, password_hash, display_name, role)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [user.user_id, user.username, user.password_hash, user.display_name, user.role]
+  );
+}
+
 export async function upsertUser(user: UserRow): Promise<void> {
   await pool.query(
     `INSERT INTO users (user_id, username, password_hash, display_name, role)

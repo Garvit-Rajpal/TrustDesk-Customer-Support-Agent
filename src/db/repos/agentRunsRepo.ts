@@ -1,5 +1,6 @@
 import { pool } from "../pool.js";
 import type { GuardrailResult, RunStatus, RunType } from "../../domain/schemas.js";
+import type { CategorizedAgentRun } from "../../services/qualityMetrics.js";
 
 export interface NewAgentRun {
   run_id: string;
@@ -52,6 +53,19 @@ export interface AgentRunRow {
   model_name: string | null;
   latency_ms: number | null;
   created_at: string;
+}
+
+// V2-3 (LLD_v2 §4): draft_reply runs only (guardrail_block_rate is about
+// draft output scans — triage runs can never reach "guardrail_blocked",
+// see src/services/triage.ts) joined out to the ticket's triage category.
+export async function getCategorizedDraftRuns(): Promise<CategorizedAgentRun[]> {
+  const { rows } = await pool.query(`
+    SELECT t.triage->>'category' AS category, ar.status
+    FROM agent_runs ar
+    JOIN tickets t ON ar.ticket_id = t.ticket_id
+    WHERE ar.run_type = 'draft_reply' AND t.triage IS NOT NULL
+  `);
+  return rows;
 }
 
 export async function getAgentRunById(runId: string): Promise<AgentRunRow | null> {
