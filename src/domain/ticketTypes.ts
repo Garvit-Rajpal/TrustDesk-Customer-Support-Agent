@@ -16,3 +16,9 @@ export const SimulateInboundRequest = z.object({
   body: z.string().min(1),
 });
 export type SimulateInboundRequest = z.infer<typeof SimulateInboundRequest>;
+
+// V3-4 (LLD_v3 §3): POST /tickets/:id/messages/reply — human takeover.
+export const ManualReplyRequest = z.object({
+  body: z.string().min(1),
+});
+export type ManualReplyRequest = z.infer<typeof ManualReplyRequest>;

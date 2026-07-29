@@ -9,13 +9,14 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import bcrypt from "bcrypt";
 
-import { KbDocumentInput, Org } from "../domain/entities.js";
+import { Customer, KbDocumentInput, Org } from "../domain/entities.js";
 import type { CreateOrgRequest } from "../domain/orgTypes.js";
 import type { Vertical } from "../domain/schemas.js";
-import { newOrgId, newUserId } from "../domain/ids.js";
+import { newCustomerId, newOrgId, newUserId } from "../domain/ids.js";
 import { insertOrg, slugExists } from "../db/repos/orgsRepo.js";
 import { upsertKbDocument } from "../db/repos/kbDocumentsRepo.js";
 import { getUserByUsername, insertUser } from "../db/repos/usersRepo.js";
+import { insertCustomer } from "../db/repos/customersRepo.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKS_DIR = path.resolve(__dirname, "../policy_packs");
@@ -81,9 +82,36 @@ export async function stampPolicyPack(orgId: string, slug: string, vertical: Ver
   return documentIds;
 }
 
+// V3-2 (LLD_v3 §2): canned starter data so a freshly onboarded org (via
+// either self-serve signup or admin-onboarding — both call createOrg())
+// can immediately create test tickets against its own stamped policy pack,
+// without a separate POST /customers call first. Deliberately generic
+// (not vertical-specific) — these are placeholder test fixtures, not
+// meant to resemble a real customer of any particular org.
+const DEMO_CUSTOMERS: readonly Omit<Customer, "customer_id" | "created_at">[] = [
+  { name: "Priya Sharma", email: "priya.sharma@example.com", tier: "gold", country: "IN", verified: true, tags: ["demo"] },
+  { name: "Alex Johnson", email: "alex.johnson@example.com", tier: "standard", country: "US", verified: true, tags: ["demo"] },
+  { name: "Mei Tanaka", email: "mei.tanaka@example.com", tier: "standard", country: "JP", verified: false, tags: ["demo"] },
+  { name: "Carlos Ruiz", email: "carlos.ruiz@example.com", tier: "silver", country: "MX", verified: true, tags: ["demo"] },
+];
+
+export async function seedDemoCustomers(orgId: string): Promise<string[]> {
+  const ctx = { org_id: orgId };
+  const customerIds: string[] = [];
+  for (const demo of DEMO_CUSTOMERS) {
+    const customer = await insertCustomer(ctx, {
+      ...demo,
+      customer_id: newCustomerId(),
+      created_at: new Date().toISOString(),
+    });
+    customerIds.push(customer.customer_id);
+  }
+  return customerIds;
+}
+
 export type CreateOrgOutcome =
   | { kind: "username_taken" }
-  | { kind: "ok"; org: Org; admin_user_id: string; document_ids: string[] };
+  | { kind: "ok"; org: Org; admin_user_id: string; document_ids: string[]; customer_ids: string[] };
 
 export async function createOrg(input: CreateOrgRequest): Promise<CreateOrgOutcome> {
   const existing = await getUserByUsername(input.admin_username);
@@ -95,6 +123,7 @@ export async function createOrg(input: CreateOrgRequest): Promise<CreateOrgOutco
   const slug = await deriveUniqueSlug(input.name);
   const org = await insertOrg({ org_id: orgId, name: input.name, slug, vertical: input.vertical });
   const documentIds = await stampPolicyPack(orgId, slug, input.vertical);
+  const customerIds = await seedDemoCustomers(orgId);
 
   const adminUserId = newUserId();
   const passwordHash = await bcrypt.hash(input.admin_password, 10);
@@ -109,5 +138,11 @@ export async function createOrg(input: CreateOrgRequest): Promise<CreateOrgOutco
     }
   );
 
-  return { kind: "ok", org, admin_user_id: adminUserId, document_ids: documentIds };
+  return {
+    kind: "ok",
+    org,
+    admin_user_id: adminUserId,
+    document_ids: documentIds,
+    customer_ids: customerIds,
+  };
 }

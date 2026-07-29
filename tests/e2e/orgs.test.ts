@@ -17,6 +17,7 @@ describe("multi-tenancy (LLD_v2 §6)", () => {
   let softwareOrgSlug: string;
   let softwareAdminToken: string;
   let softwareDocIds: string[];
+  let createOrgResponse: request.Response;
 
   beforeAll(async () => {
     await truncateAll();
@@ -41,6 +42,7 @@ describe("multi-tenancy (LLD_v2 §6)", () => {
     softwareOrgId = createOrg.body.data.org.org_id;
     softwareOrgSlug = createOrg.body.data.org.slug;
     softwareDocIds = createOrg.body.data.document_ids;
+    createOrgResponse = createOrg;
 
     const softwareLogin = await request(app)
       .post("/auth/login")
@@ -88,6 +90,17 @@ describe("multi-tenancy (LLD_v2 §6)", () => {
       expect(res.status).toBe(201);
       expect(res.body.data.org.slug).toBe("ACME-SOFTWARE-2");
       expect(res.body.data.document_ids[0]).toMatch(/^ACME-SOFTWARE-2-KB-/);
+    });
+
+    it("seeds demo customers so the new org can create tickets immediately (V3-2)", async () => {
+      expect(createOrgResponse.body.data.customer_ids.length).toBe(4);
+      const res = await request(app)
+        .get("/customers")
+        .set("Authorization", `Bearer ${softwareAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.customers.map((c: { customer_id: string }) => c.customer_id).sort()).toEqual(
+        [...createOrgResponse.body.data.customer_ids].sort()
+      );
     });
 
     it("403s for an admin who isn't org_default's", async () => {
@@ -206,9 +219,9 @@ describe("multi-tenancy (LLD_v2 §6)", () => {
     let softwareTicketId: string;
 
     beforeAll(async () => {
-      // Fabricate a ticket directly in the new org — POST /tickets needs an
-      // existing customer, and the new org has none yet (only its admin +
-      // policy pack docs exist from onboarding).
+      // Fabricate a ticket directly in the new org via a customer id that
+      // deliberately isn't one of the V3-2 demo customers, to keep this
+      // fixture independent of that seeding detail.
       const ctx = { org_id: softwareOrgId };
       await upsertCustomer(
         {

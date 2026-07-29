@@ -35,6 +35,7 @@ orgsRouter.post("/", requirePermission("orgs:create"), async (req, res, next) =>
         org: outcome.org,
         admin_user_id: outcome.admin_user_id,
         document_ids: outcome.document_ids,
+        customer_ids: outcome.customer_ids,
       },
     });
   } catch (err) {

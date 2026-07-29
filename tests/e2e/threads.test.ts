@@ -41,7 +41,7 @@ describe("V2-4 threads + status machine", () => {
       expect(res.body.data.messages[0].body).toBe(ticket.body.data.ticket.body);
     });
 
-    it("a newly created ticket gets its own initial inbound message", async () => {
+    it("a newly created ticket gets its own initial inbound message plus an automatic greeting (V3-4)", async () => {
       const created = await request(app)
         .post("/tickets")
         .set("Authorization", `Bearer ${token}`)
@@ -51,8 +51,10 @@ describe("V2-4 threads + status machine", () => {
       const res = await request(app)
         .get(`/tickets/${created.body.data.ticket_id}/messages`)
         .set("Authorization", `Bearer ${token}`);
-      expect(res.body.data.messages).toHaveLength(1);
+      expect(res.body.data.messages).toHaveLength(2);
+      expect(res.body.data.messages[0]).toMatchObject({ direction: "inbound", author: "customer" });
       expect(res.body.data.messages[0].body).toBe("Hello there.");
+      expect(res.body.data.messages[1]).toMatchObject({ direction: "outbound", author: "system" });
     });
   });
 

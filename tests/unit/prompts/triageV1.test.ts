@@ -19,6 +19,9 @@ const ticket: Ticket = {
   status: "open",
   created_at: "2026-07-02T18:10:00+05:30",
   triage: null,
+  human_owned: false,
+  human_owned_by: null,
+  human_owned_at: null,
 };
 
 const customer: Customer = {

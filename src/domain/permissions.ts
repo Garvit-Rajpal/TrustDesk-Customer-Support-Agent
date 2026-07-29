@@ -34,6 +34,8 @@ export const PERMISSIONS = {
   // opens a demo ticket" flow (ADR-5), not a separate capability.
   "customers:view": ["agent", "manager", "admin"],
   "customers:write": ["agent", "manager", "admin"],
+  // V3-4 (LLD_v3 §3): human-takeover manual reply — same tier as drafts:send.
+  "tickets:reply_manual": ["agent", "manager", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

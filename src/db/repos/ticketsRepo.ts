@@ -33,7 +33,8 @@ export async function upsertSeedTicket(ticket: SeedTicket, orgId = "org_default"
 // nonexistent one.
 export async function getTicketById(ctx: OrgContext, ticketId: string): Promise<Ticket | null> {
   const { rows } = await pool.query(
-    `SELECT ticket_id, customer_id, order_id, channel, subject, body, status, created_at::text, triage
+    `SELECT ticket_id, customer_id, order_id, channel, subject, body, status, created_at::text, triage,
+            human_owned, human_owned_by, human_owned_at::text
      FROM tickets WHERE ticket_id = $1 AND org_id = $2`,
     [ticketId, ctx.org_id]
   );
@@ -91,7 +92,8 @@ export async function listTickets(ctx: OrgContext, filters: TicketFilters = {}):
   }
 
   const { rows } = await pool.query(
-    `SELECT ticket_id, customer_id, order_id, channel, subject, body, status, created_at::text, triage
+    `SELECT ticket_id, customer_id, order_id, channel, subject, body, status, created_at::text, triage,
+            human_owned, human_owned_by, human_owned_at::text
      FROM tickets WHERE ${conditions.join(" AND ")} ORDER BY created_at`,
     params
   );
@@ -114,7 +116,8 @@ export async function insertTicket(ctx: OrgContext, ticket: NewTicketInput): Pro
   const { rows } = await pool.query(
     `INSERT INTO tickets (ticket_id, customer_id, order_id, channel, subject, body, status, created_at, org_id)
      VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, $8)
-     RETURNING ticket_id, customer_id, order_id, channel, subject, body, status, created_at::text, triage`,
+     RETURNING ticket_id, customer_id, order_id, channel, subject, body, status, created_at::text, triage,
+               human_owned, human_owned_by, human_owned_at::text`,
     [
       ticket.ticket_id,
       ticket.customer_id,
@@ -127,4 +130,15 @@ export async function insertTicket(ctx: OrgContext, ticket: NewTicketInput): Pro
     ]
   );
   return Ticket.parse(rows[0]);
+}
+
+// V3-4 (LLD_v3 §3, HLD_v3 ADR-15): idempotent — a second manual reply on an
+// already-human-owned ticket is a no-op here (WHERE ... AND human_owned =
+// false means the second call simply updates zero rows).
+export async function markHumanOwned(ctx: OrgContext, ticketId: string, userId: string): Promise<void> {
+  await pool.query(
+    `UPDATE tickets SET human_owned = true, human_owned_by = $3, human_owned_at = now()
+     WHERE ticket_id = $1 AND org_id = $2 AND human_owned = false`,
+    [ticketId, ctx.org_id, userId]
+  );
 }

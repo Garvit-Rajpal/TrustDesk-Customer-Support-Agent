@@ -21,6 +21,9 @@ const ticket: Ticket = {
   status: "open",
   created_at: "2026-06-28T10:15:00+05:30",
   triage: null,
+  human_owned: false,
+  human_owned_by: null,
+  human_owned_at: null,
 };
 
 const facts: EligibilityFacts = {

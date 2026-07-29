@@ -9,7 +9,9 @@ export type ErrorCode =
   | "CONFLICT"
   | "GUARDRAIL_BLOCKED"
   | "TOOL_EXECUTION_FAILED"
-  | "MODEL_PROVIDER_ERROR";
+  | "MODEL_PROVIDER_ERROR"
+  // V3-3 (LLD_v3 §2): POST /signup is the one unauthenticated write route.
+  | "RATE_LIMITED";
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDATION_ERROR: 400,
@@ -20,6 +22,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   GUARDRAIL_BLOCKED: 422,
   TOOL_EXECUTION_FAILED: 502,
   MODEL_PROVIDER_ERROR: 502,
+  RATE_LIMITED: 429,
 };
 
 export function sendError(

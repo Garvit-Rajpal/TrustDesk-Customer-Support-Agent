@@ -85,6 +85,9 @@ export type SeedTicket = z.infer<typeof SeedTicket>;
 
 // Runtime ticket row — no expected_* fields. This is what every service
 // other than the seed loader / EvalRunner is allowed to see (HLD invariant #4).
+// V3-4 (LLD_v3 §3, HLD_v3 ADR-15): once a human sends a manual reply,
+// human_owned flips true permanently (until resolved/closed) — AI drafting
+// is blocked for the ticket from then on. One-way, no revert path.
 export const Ticket = z.object({
   ticket_id: z.string(),
   customer_id: z.string(),
@@ -95,6 +98,9 @@ export const Ticket = z.object({
   status: TicketStatus,
   created_at: z.string(),
   triage: z.unknown().nullable(),
+  human_owned: z.boolean(),
+  human_owned_by: z.string().nullable(),
+  human_owned_at: z.string().nullable(),
 });
 export type Ticket = z.infer<typeof Ticket>;
 

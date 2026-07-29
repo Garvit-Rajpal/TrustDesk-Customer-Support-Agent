@@ -1,15 +1,17 @@
 import { Router, type Response } from "express";
-import { CreateTicketRequest, SimulateInboundRequest } from "../../domain/ticketTypes.js";
+import { CreateTicketRequest, ManualReplyRequest, SimulateInboundRequest } from "../../domain/ticketTypes.js";
 import { newMessageId, newTicketId } from "../../domain/ids.js";
 import { getTicketById, listTickets, insertTicket } from "../../db/repos/ticketsRepo.js";
 import { getCustomerById } from "../../db/repos/customersRepo.js";
 import { getOrderById } from "../../db/repos/ordersRepo.js";
+import { getOrgById } from "../../db/repos/orgsRepo.js";
 import { insertMessage, listMessagesByTicketId } from "../../db/repos/ticketMessagesRepo.js";
 import { sendError } from "../errorEnvelope.js";
 import type { ModelAdapter } from "../../adapters/modelAdapter.js";
 import { runTriage } from "../../services/triage.js";
 import { generateDraft } from "../../services/draft.js";
-import { closeTicket, resolveTicket, simulateInbound } from "../../services/ticketThread.js";
+import { closeTicket, resolveTicket, sendManualReply, simulateInbound } from "../../services/ticketThread.js";
+import { greetingTemplate } from "../../services/ticketGreeting.js";
 import { getAgentRunById } from "../../db/repos/agentRunsRepo.js";
 import { listRunEventsByRunId } from "../../db/repos/runEventsRepo.js";
 import { isTerminalEvent, pipelineEventBus } from "../../services/events/pipelineEventBus.js";
@@ -107,6 +109,21 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
         author: "customer",
       });
 
+      // V3-4 (LLD_v3 §3, HLD_v3 ADR-15): deterministic, per-vertical
+      // greeting — no model call, no status transition. Best-effort: an
+      // org lookup failure here shouldn't fail ticket creation, which is
+      // already committed by this point.
+      const org = await getOrgById(ctx.org_id);
+      if (org) {
+        await insertMessage(ctx, {
+          message_id: newMessageId(),
+          ticket_id: ticket.ticket_id,
+          direction: "outbound",
+          body: greetingTemplate(org.vertical),
+          author: "system",
+        });
+      }
+
       res.status(201).json({ data: ticket });
     } catch (err) {
       next(err);
@@ -162,6 +179,12 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
       }
       if (!ticket.triage) {
         sendError(res, "CONFLICT", `Ticket ${req.params.id} must be triaged before drafting a reply`);
+        return;
+      }
+      // V3-4 (LLD_v3 §3, HLD_v3 ADR-15): one-way — once a human has taken
+      // over, AI drafting never re-enters this ticket.
+      if (ticket.human_owned) {
+        sendError(res, "CONFLICT", `Ticket ${req.params.id} is human-owned; AI drafting is disabled`);
         return;
       }
       const customer = await getCustomerById(ctx, ticket.customer_id);
@@ -229,6 +252,42 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
             res,
             "CONFLICT",
             `Ticket is "${outcome.from}" — a customer reply is only valid from "awaiting_customer" or "resolved"`
+          );
+          return;
+        }
+        res.status(201).json({ data: outcome.message });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // V3-4 (LLD_v3 §3, HLD_v3 ADR-15): human takeover — a manually-typed
+  // reply that bypasses the draft pipeline entirely. Marks the ticket
+  // human_owned (idempotent past the first call).
+  ticketsRouter.post(
+    "/:id/messages/reply",
+    requirePermission("tickets:reply_manual"),
+    async (req, res, next) => {
+      try {
+        const parsed = ManualReplyRequest.safeParse(req.body);
+        if (!parsed.success) {
+          sendError(res, "VALIDATION_ERROR", "Invalid manual reply payload", parsed.error.flatten());
+          return;
+        }
+        const ctx = req.orgContext!;
+        const ticket = await getTicketById(ctx, req.params.id);
+        if (!ticket) {
+          sendError(res, "NOT_FOUND", `Ticket ${req.params.id} not found`);
+          return;
+        }
+
+        const outcome = await sendManualReply(ctx, ticket, parsed.data.body, req.user!.sub);
+        if (outcome.kind === "illegal_transition") {
+          sendError(
+            res,
+            "CONFLICT",
+            `Ticket is "${outcome.from}" — a reply is only valid from "in_progress" or "customer_replied"`
           );
           return;
         }

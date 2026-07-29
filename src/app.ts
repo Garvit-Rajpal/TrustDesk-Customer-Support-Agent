@@ -11,6 +11,7 @@ import { draftsRouter } from "./api/routes/drafts.js";
 import { metricsRouter } from "./api/routes/metrics.js";
 import { orgsRouter } from "./api/routes/orgs.js";
 import { customersRouter } from "./api/routes/customers.js";
+import { signupRouter } from "./api/routes/signup.js";
 import { authMiddleware } from "./api/middleware/auth.js";
 import { tenancyMiddleware } from "./api/middleware/tenancy.js";
 import { errorHandler } from "./api/middleware/errors.js";
@@ -28,6 +29,10 @@ export function buildApp(modelAdapter: ModelAdapter): Express {
 
   app.use(express.json());
   app.use("/auth", authRouter);
+  // V3-3 (LLD_v3 §2, HLD_v3 ADR-14): public, unauthenticated org-admin
+  // signup — mounted at the same tier as /auth, before authMiddleware.
+  // No req.user/req.orgContext exists yet; createOrg() never needed one.
+  app.use("/signup", signupRouter);
 
   // ADR-4: every route below requires a valid JWT. V2-5: tenancyMiddleware
   // runs right after auth on every one of them, so req.orgContext is always

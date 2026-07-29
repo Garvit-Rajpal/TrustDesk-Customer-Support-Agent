@@ -1,0 +1,42 @@
+flowchart TD
+    A[Ticket opened - status: open<br/>first inbound message in thread<br/>NEW v3: deterministic system greeting<br/>appended immediately, no status change] --> B[Guardrail L1: input scan<br/>runs on EVERY inbound message]
+    B --> HO{Ticket already<br/>human_owned?}
+
+    HO -->|yes: human took over earlier| HR[Agent composes a manual reply<br/>NEW v3: POST /tickets/:id/messages/reply<br/>bypasses the AI pipeline entirely]
+    HR --> HU[Outbound msg appended<br/>status: awaiting_customer<br/>human_owned/by/at stamped - idempotent]
+    HU --> V
+
+    HO -->|no| C[Triage - re-runnable per inbound msg<br/>NEW v3: auto-triggered synchronously<br/>right after ticket creation, same<br/>function the manual button calls]
+    C --> T1[(agent_run + run_events<br/>SSE stepper: live + replay)]
+    C --> D[Retrieval - org-scoped FTS<br/>filtered by triage category]
+    D --> E[Eligibility facts - code, not LLM<br/>ticket.created_at vs policy windows]
+    E --> F[Draft generation targets latest inbound msg<br/>NEW v3: auto-triggered same as triage<br/>context: thread history, each msg fenced<br/>as untrusted data + facts + docs]
+    F --> G[Guardrail L3: output scan<br/>+ org-aware unrelated-customer check]
+    G -->|fail| G2[Fail closed: template draft substituted<br/>rejected output kept, manager-visible only]
+    G -->|pass| H[Draft saved: resolution_type + citations<br/>+ catalog-validated recommended actions]
+    G2 --> H
+    H --> T2[(agent_run + run_events)]
+    H --> AS{NEW v3: evaluateAutoSend -<br/>resolution_type === answered AND<br/>no recommended action requires approval?<br/>deterministic code, not model output}
+
+    AS -->|yes| AUTO[Auto-send: sendDraft called immediately<br/>no human click - draft: sent<br/>ticket: awaiting_customer]
+    AUTO --> V
+
+    AS -->|no: escalated / refused_by_policy<br/>/ approval-gated action| I{Action recommended?}
+    I -->|yes| L[POST /tool-actions<br/>catalog validation + idempotency key<br/>unaffected by human-takeover status]
+    L --> M{requires_human_approval<br/>from catalog}
+    M -->|yes| N[approval_required] --> P{Manager decision - RBAC}
+    P -->|approve| O[approved]
+    P -->|reject| Q[rejected - terminal<br/>agent handles manually]
+    M -->|no| O
+    O --> R[Execute: re-validate + idempotent replay<br/>executed or failed]
+    I -->|no| S[Agent reviews draft]
+    R --> S
+    Q --> S
+    S -->|send the AI draft as-is| U[POST /drafts/:id/send<br/>outbound message appended, draft: sent<br/>ticket: awaiting_customer<br/>human_owned NOT set - AI stays eligible]
+    S -->|NEW v3: write a manual reply instead| HR
+    U --> V{Customer replies?<br/>simulate-inbound in v2/v3<br/>real channel deferred to v4}
+    V -->|yes - status: customer_replied| B
+    V -->|no| W[Agent resolves - status: resolved]
+    W --> X{Customer replies after resolve?}
+    X -->|yes - reopened: customer_replied| B
+    X -->|no| Y[Closed - lifecycle ends<br/>feedback ratings feed quality dashboard]

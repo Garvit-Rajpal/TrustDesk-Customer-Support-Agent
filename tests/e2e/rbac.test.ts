@@ -152,6 +152,15 @@ const ROUTE_CASES: RouteCase[] = [
         .send({ body: "hi" }),
   },
   {
+    name: "POST /tickets/:id/messages/reply",
+    allowedRoles: ["agent", "manager", "admin"],
+    request: (t) =>
+      request(app)
+        .post("/tickets/tkt_does_not_exist/messages/reply")
+        .set("Authorization", `Bearer ${t}`)
+        .send({ body: "hi" }),
+  },
+  {
     name: "POST /drafts/:id/send",
     allowedRoles: ["agent", "manager", "admin"],
     request: (t) =>

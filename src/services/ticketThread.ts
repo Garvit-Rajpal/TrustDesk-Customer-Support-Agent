@@ -8,7 +8,7 @@ import type { Ticket } from "../domain/entities.js";
 import type { OrgContext } from "../domain/orgContext.js";
 import type { DraftRow } from "../db/repos/draftsRepo.js";
 import { updateDraftStatus } from "../db/repos/draftsRepo.js";
-import { updateTicketStatus } from "../db/repos/ticketsRepo.js";
+import { markHumanOwned, updateTicketStatus } from "../db/repos/ticketsRepo.js";
 import { insertMessage, type TicketMessageRow } from "../db/repos/ticketMessagesRepo.js";
 import { newMessageId } from "../domain/ids.js";
 import { canTransition } from "./ticketStatus.js";
@@ -60,6 +60,32 @@ export async function sendDraft(
   });
   await updateDraftStatus(ctx, draft.draft_id, "sent");
   await updateTicketStatus(ctx, ticket.ticket_id, "awaiting_customer");
+  return { kind: "ok", message };
+}
+
+// V3-4 (LLD_v3 §3, HLD_v3 ADR-15): a human-composed reply that bypasses the
+// draft pipeline entirely (draft_id: null, same as sendDraft's shape
+// otherwise). The first call on a ticket marks it human_owned — permanent,
+// until resolved/closed — which the draft-reply route checks to 409 any
+// further AI drafting attempts on this thread.
+export async function sendManualReply(
+  ctx: OrgContext,
+  ticket: Ticket,
+  body: string,
+  authorUserId: string
+): Promise<ThreadOutcome> {
+  if (!canTransition(ticket.status, "awaiting_customer")) {
+    return { kind: "illegal_transition", from: ticket.status };
+  }
+  const message = await insertMessage(ctx, {
+    message_id: newMessageId(),
+    ticket_id: ticket.ticket_id,
+    direction: "outbound",
+    body,
+    author: authorUserId,
+  });
+  await updateTicketStatus(ctx, ticket.ticket_id, "awaiting_customer");
+  await markHumanOwned(ctx, ticket.ticket_id, authorUserId);
   return { kind: "ok", message };
 }
 

@@ -7,10 +7,11 @@ AI support-operations capstone. All design decisions are already made — do not
 1. `docs/HLD.md` — v1 architecture, ADRs 1–7, the four lifecycles, guardrail layers
 2. `docs/LLD.md` — v1 DB schemas, zod domain types, API contracts, guardrail rules, prompt templates
 3. `docs/HLD_v2.md` + `docs/LLD_v2.md` — v2 product extension (ADRs 8–13): pipeline visibility SSE, RBAC, feedback, threaded tickets, multi-tenancy, model tiers, design system. Delta docs — v1 remains valid where not amended.
-4. `docs/ticket_lifecycle.mermaid` (v1) and `docs/ticket_lifecycle_v2.mermaid` (current)
-5. Requirements source of truth: `../Airtribe_Project_requirements_Repo/trustdesk-capstone/` (problem statement, seed data in `data/`, eval cases)
+4. `docs/HLD_v3.md` + `docs/LLD_v3.md` — v3 product extension (ADRs 14–18): self-serve org signup, human takeover, auto-resolution, consent-gated cross-org platform support, dashboard home, UI revamp (Tailwind, router, chat thread, perceived streaming). Delta docs — v1/v2 remain valid where not amended.
+5. `docs/ticket_lifecycle.mermaid` (v1), `docs/ticket_lifecycle_v2.mermaid`, `docs/ticket_lifecycle_v3.mermaid` (current)
+6. Requirements source of truth: `../Airtribe_Project_requirements_Repo/trustdesk-capstone/` (problem statement, seed data in `data/`, eval cases)
 
-**Current phase:** v2 milestones (LLD_v2 §9, order V2-1 → V2-6). Standing rule: the full v1 test suite, including eval_005/006/007 adversarial tests, must be green at the end of every v2 milestone.
+**Current phase:** v3 milestones (LLD_v3 §7, order V3-1 → V3-10). Standing rule: the full v1+v2 test suite, including eval_005/006/007 adversarial tests, must be green at the end of every v3 milestone.
 
 ## Stack
 
@@ -32,8 +33,10 @@ Node.js 20, Express, TypeScript (strict), PostgreSQL 16, zod, vitest + supertest
 5. L3 guardrail failure = discard draft + substitute deterministic template (fail closed), keep rejected draft on the trace. Never redact in place.
 6. Every AI run writes its `agent_runs` row synchronously, with non-empty `guardrail_results`, before the API responds.
 7. `idempotency_key` is UNIQUE; replays return the stored result with `replayed: true`, never re-execute.
-8. Ticket `body` is never mutated. No customer auth exists. No signup endpoint.
-9. Draft-reply requires prior triage (409 otherwise) — enforces triage → retrieval → draft.
+8. Ticket `body` is never mutated. No customer auth exists. **v3 amendment (HLD_v3 ADR-14):** a public, unauthenticated org-admin signup endpoint (`POST /signup`) now exists — a prospective *tenant* can self-onboard. This is org-admin self-service only; it does not touch the `customers` domain (a tenant's own end-users, who submit tickets) — end-customer auth/signup still does not exist and is not planned.
+9. Draft-reply requires prior triage (409 otherwise) — enforces triage → retrieval → draft. **v3 amendment:** draft-reply also 409s once a ticket is `human_owned` (see invariant 11).
+10. Auto-send eligibility (`evaluateAutoSend()`, HLD_v3 ADR-15) is deterministic code keyed on `resolution_type`/`recommended_actions`, never model output — the send decision follows invariant #1's rule exactly, just applied one step further down the pipeline.
+11. Once a ticket is `human_owned` (a human agent sent a manually-composed reply via `POST /tickets/:id/messages/reply`), AI drafting is permanently blocked for that ticket — one-way, no revert path in v3.
 
 ## Conventions
 
