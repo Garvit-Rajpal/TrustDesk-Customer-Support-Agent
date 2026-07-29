@@ -15,4 +15,6 @@ export const newTicketId = () => `tkt_${nanoid()}`;
 // Also not in CLAUDE.md's original prefix list — V2-3 (LLD_v2 §4) activates
 // the v1-designed-but-unused feedback table.
 export const newFeedbackId = () => `fbk_${nanoid()}`;
+// V2-4 (LLD_v2 §1/§5): ticket_messages row IDs.
+export const newMessageId = () => `msg_${nanoid()}`;
 

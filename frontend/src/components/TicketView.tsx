@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
-import { api, type DraftResult, type Role, type TicketDetail, type TriageResult } from "../api.js";
+import {
+  api,
+  type DraftResult,
+  type Role,
+  type TicketDetail,
+  type TicketMessage,
+  type TriageResult,
+} from "../api.js";
 import { ActionPanel } from "./ActionPanel.js";
 import { TracePanel } from "./TracePanel.js";
 import { RunStepper } from "./RunStepper.js";
 import { FeedbackControl } from "./FeedbackControl.js";
+import { StatusBadge } from "../design-system/StatusBadge.js";
 
 type TriageDisplay = Pick<
   TriageResult,
@@ -28,6 +36,8 @@ export function TicketView({
   const [draft, setDraft] = useState<DraftResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [messages, setMessages] = useState<TicketMessage[]>([]);
+  const [replyBody, setReplyBody] = useState("");
 
   function load() {
     api
@@ -38,6 +48,14 @@ export function TicketView({
         setTriageRunId(null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load ticket"));
+    loadMessages();
+  }
+
+  function loadMessages() {
+    api
+      .getMessages(ticketId)
+      .then((res) => setMessages(res.messages))
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load thread"));
   }
 
   useEffect(() => {
@@ -45,9 +63,18 @@ export function TicketView({
     setTriage(null);
     setTriageRunId(null);
     setDraft(null);
+    setMessages([]);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
+
+  // Re-fetches just the ticket (status can change from triage's
+  // open/customer_replied -> in_progress auto-advance, LLD_v2 §5) without
+  // disturbing the triage/draft/messages state already on screen.
+  async function refreshStatus() {
+    const res = await api.getTicket(ticketId);
+    setDetail(res);
+  }
 
   async function handleTriage() {
     setError(null);
@@ -57,6 +84,7 @@ export function TicketView({
       setTriage(result);
       setTriageRunId(result.run_id);
       setDraft(null);
+      await refreshStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Triage failed");
     } finally {
@@ -76,6 +104,64 @@ export function TicketView({
     }
   }
 
+  async function handleSendDraft() {
+    if (!draft) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await api.sendDraft(draft.draft_id);
+      setDraft(null);
+      await refreshStatus();
+      loadMessages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSimulateInbound() {
+    if (!replyBody.trim()) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await api.simulateInbound(ticketId, replyBody);
+      setReplyBody("");
+      await refreshStatus();
+      loadMessages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Simulated reply failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResolve() {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.resolveTicket(ticketId);
+      await refreshStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Resolve failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleClose() {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.closeTicket(ticketId);
+      await refreshStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Close failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!detail) return <p>Loading…</p>;
 
   const { ticket, customer, order } = detail;
@@ -85,11 +171,49 @@ export function TicketView({
       <button onClick={onBack} className="link-button">
         ← Back to queue
       </button>
-      <h2>{ticket.subject}</h2>
+      <h2>
+        {ticket.subject} <StatusBadge value={ticket.status} />
+      </h2>
       <p className="muted">
         {ticket.ticket_id} · {ticket.channel} · {ticket.created_at}
       </p>
       <p>{ticket.body}</p>
+
+      <section className="thread-panel">
+        <h4>Thread</h4>
+        {messages.length === 0 && <p className="muted">Loading…</p>}
+        <ul className="thread-list">
+          {messages.map((m) => (
+            <li key={m.message_id} className={`thread-message thread-message--${m.direction}`}>
+              <div className="thread-message-meta">
+                {m.direction} · {m.author} · {m.created_at}
+              </div>
+              <div className="thread-message-body">{m.body}</div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="decision-row">
+          <input
+            placeholder="Simulate a customer reply…"
+            value={replyBody}
+            onChange={(e) => setReplyBody(e.target.value)}
+            disabled={busy}
+          />
+          <button disabled={busy || !replyBody.trim()} onClick={handleSimulateInbound}>
+            Simulate inbound
+          </button>
+        </div>
+
+        <div className="actions-row">
+          <button disabled={busy} onClick={handleResolve}>
+            Resolve
+          </button>
+          <button disabled={busy} onClick={handleClose}>
+            Close
+          </button>
+        </div>
+      </section>
 
       <div className="context-grid">
         <div>
@@ -153,6 +277,11 @@ export function TicketView({
           <RunStepper ticketId={ticketId} runId={draft.run_id} />
           <TracePanel runId={draft.run_id} />
           <FeedbackControl draftId={draft.draft_id} />
+          <div className="actions-row">
+            <button disabled={busy} onClick={handleSendDraft}>
+              Send draft to customer
+            </button>
+          </div>
 
           {draft.recommended_actions.length === 0 && <p className="muted">No recommended actions.</p>}
           {draft.recommended_actions.map((action) => (

@@ -17,6 +17,7 @@ import { getKbDocumentById, listKbDocuments } from "../db/repos/kbDocumentsRepo.
 import { listToolCatalog } from "../db/repos/toolCatalogRepo.js";
 import { insertDraft } from "../db/repos/draftsRepo.js";
 import { insertAgentRun } from "../db/repos/agentRunsRepo.js";
+import { getLatestInboundMessage, listMessagesByTicketId } from "../db/repos/ticketMessagesRepo.js";
 import { pipelineEventBus } from "./events/pipelineEventBus.js";
 
 const STANDARD_AUDIENCE = "Customer support agents";
@@ -61,12 +62,25 @@ export async function generateDraft(
   // untyped jsonb.
   const triage = TriageResult.parse(ticket.triage);
 
+  // V2-4 (LLD_v2 §5): "draft targets the latest inbound message" — same
+  // rationale as TriageService's latestInboundBody (see triage.ts).
+  const [latestInbound, threadMessages] = await Promise.all([
+    getLatestInboundMessage(ticket.ticket_id),
+    listMessagesByTicketId(ticket.ticket_id),
+  ]);
+  const latestInboundBody = latestInbound?.body ?? ticket.body;
+  // Prior messages only — the latest inbound one is shown separately in its
+  // own fenced block by buildDraftUserPrompt.
+  const priorThreadMessages = latestInbound
+    ? threadMessages.filter((m) => m.message_id !== latestInbound.message_id)
+    : threadMessages;
+
   // Stage order below follows ADR-8's pipeline (input_scan → retrieval →
   // eligibility → draft_generation → output_scan); none of these steps
   // actually depend on one another's output, so ordering them this way is
   // free and makes the emitted event sequence match the documented pipeline.
   await pipelineEventBus.emitStage(runId, "input_scan", "started");
-  const l1Results = inputScan(ticket.subject, ticket.body);
+  const l1Results = inputScan(ticket.subject, latestInboundBody);
   const flags = {
     injectionFlag: l1Results.find((r) => r.check === "injection_phrase")?.passed === false,
     secretExtractionFlag: l1Results.find((r) => r.check === "secret_extraction")?.passed === false,
@@ -79,7 +93,7 @@ export async function generateDraft(
 
   await pipelineEventBus.emitStage(runId, "retrieval", "started");
   const searchResults = await searchDocuments(
-    buildBroadQueryText(`${ticket.subject} ${ticket.body}`),
+    buildBroadQueryText(`${ticket.subject} ${latestInboundBody}`),
     triage.category
   );
   const retrievedDocIds = searchResults.map((r) => r.doc_id);
@@ -103,7 +117,15 @@ export async function generateDraft(
     passed: true,
   });
 
-  const userPrompt = buildDraftUserPrompt(ticket, retrievedDocs, facts, flags, toolCatalog);
+  const userPrompt = buildDraftUserPrompt(
+    ticket,
+    latestInboundBody,
+    priorThreadMessages,
+    retrievedDocs,
+    facts,
+    flags,
+    toolCatalog
+  );
 
   let raw = "";
   let modelProvider = "";
@@ -211,6 +233,7 @@ export async function generateDraft(
     body: resultBody,
     citations: resultCitations,
     recommended_actions: recommendedActions,
+    message_id: latestInbound?.message_id ?? null,
   });
 
   await insertAgentRun({

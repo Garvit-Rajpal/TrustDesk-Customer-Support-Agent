@@ -2,7 +2,9 @@ import { Router } from "express";
 import { SubmitFeedbackRequest } from "../../domain/feedbackTypes.js";
 import { newFeedbackId } from "../../domain/ids.js";
 import { getDraftById } from "../../db/repos/draftsRepo.js";
+import { getTicketById } from "../../db/repos/ticketsRepo.js";
 import { upsertFeedback } from "../../db/repos/feedbackRepo.js";
+import { sendDraft } from "../../services/ticketThread.js";
 import { sendError } from "../errorEnvelope.js";
 import { requirePermission } from "../middleware/permissions.js";
 
@@ -36,6 +38,37 @@ draftsRouter.post("/:id/feedback", requirePermission("feedback:submit"), async (
     });
 
     res.status(created ? 201 : 200).json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// V2-4 (LLD_v2 §5): appends an outbound message from the draft, moves the
+// draft to 'sent', and the ticket to awaiting_customer. Illegal from the
+// ticket's current status (e.g. it's already awaiting a reply) → 409.
+draftsRouter.post("/:id/send", requirePermission("drafts:send"), async (req, res, next) => {
+  try {
+    const draft = await getDraftById(req.params.id);
+    if (!draft) {
+      sendError(res, "NOT_FOUND", `Draft ${req.params.id} not found`);
+      return;
+    }
+    const ticket = await getTicketById(draft.ticket_id);
+    if (!ticket) {
+      sendError(res, "NOT_FOUND", `Ticket ${draft.ticket_id} not found`);
+      return;
+    }
+
+    const outcome = await sendDraft(ticket, draft, req.user!.sub);
+    if (outcome.kind === "illegal_transition") {
+      sendError(
+        res,
+        "CONFLICT",
+        `Ticket is "${outcome.from}" — a draft can only be sent while the ticket is "in_progress"`
+      );
+      return;
+    }
+    res.status(200).json({ data: { draft_id: draft.draft_id, ticket_id: ticket.ticket_id, message: outcome.message } });
   } catch (err) {
     next(err);
   }

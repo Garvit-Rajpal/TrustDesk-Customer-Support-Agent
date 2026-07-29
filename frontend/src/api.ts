@@ -221,6 +221,17 @@ export interface QualityReport extends CategoryMetrics {
   by_category: Record<string, CategoryMetrics>;
 }
 
+// V2-4 (LLD_v2 §5).
+export interface TicketMessage {
+  message_id: string;
+  ticket_id: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  author: string;
+  draft_id: string | null;
+  created_at: string;
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<LoginResult>("POST", "/auth/login", { username, password }),
@@ -259,4 +270,18 @@ export const api = {
   submitFeedback: (draftId: string, input: SubmitFeedbackInput) =>
     request<FeedbackResult>("POST", `/drafts/${draftId}/feedback`, input),
   getAgentQuality: () => request<QualityReport>("GET", "/metrics/agent-quality"),
+
+  getMessages: (ticketId: string) =>
+    request<{ messages: TicketMessage[] }>("GET", `/tickets/${ticketId}/messages`),
+  simulateInbound: (ticketId: string, body: string) =>
+    request<TicketMessage>("POST", `/tickets/${ticketId}/messages/simulate-inbound`, { body }),
+  sendDraft: (draftId: string) =>
+    request<{ draft_id: string; ticket_id: string; message: TicketMessage }>(
+      "POST",
+      `/drafts/${draftId}/send`
+    ),
+  resolveTicket: (ticketId: string) =>
+    request<{ ticket_id: string; status: string }>("POST", `/tickets/${ticketId}/resolve`),
+  closeTicket: (ticketId: string) =>
+    request<{ ticket_id: string; status: string }>("POST", `/tickets/${ticketId}/close`),
 };

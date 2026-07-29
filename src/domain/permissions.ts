@@ -19,6 +19,13 @@ export const PERMISSIONS = {
   "users:invite": ["admin"],
   "feedback:submit": ["agent", "manager", "admin"],
   "metrics:view": ["manager", "admin"],
+  // V2-4 (LLD_v2 §5 API table + §3 permission matrix row "resolve/close
+  // tickets | agent+"): threads and lifecycle actions are agent+, same tier
+  // as triage/draft/tool_actions:request.
+  "tickets:messages:view": ["agent", "manager", "admin"],
+  "tickets:simulate_inbound": ["agent", "manager", "admin"],
+  "drafts:send": ["agent", "manager", "admin"],
+  "tickets:resolve": ["agent", "manager", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

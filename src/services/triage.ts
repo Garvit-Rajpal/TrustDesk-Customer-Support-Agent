@@ -9,8 +9,10 @@ import { newRunId } from "../domain/ids.js";
 import { inputScan } from "./guardrails/inputScan.js";
 import { TRIAGE_SYSTEM_PROMPT, buildTriageUserPrompt } from "./prompts/triage.v1.js";
 import { insertAgentRun } from "../db/repos/agentRunsRepo.js";
-import { updateTicketTriage } from "../db/repos/ticketsRepo.js";
+import { updateTicketStatus, updateTicketTriage } from "../db/repos/ticketsRepo.js";
+import { getLatestInboundMessage } from "../db/repos/ticketMessagesRepo.js";
 import { pipelineEventBus } from "./events/pipelineEventBus.js";
+import { canTransition } from "./ticketStatus.js";
 
 export type TriageOutcome =
   | { status: "completed"; result: TriageResult; runId: string }
@@ -36,8 +38,17 @@ export async function runTriage(
   const startedAt = Date.now();
   const runId = newRunId();
 
+  // V2-4 (LLD_v2 §5, ADR-10): classify whichever message is latest, not
+  // always ticket.body — this is both what lets category shift mid-thread
+  // and how "L1 runs on every inbound message" is satisfied: a mid-thread
+  // injection appended via simulate-inbound becomes "latest" and gets
+  // scanned the next time triage runs, even though it never touched
+  // ticket.body itself.
+  const latestInbound = await getLatestInboundMessage(ticket.ticket_id);
+  const latestInboundBody = latestInbound?.body ?? ticket.body;
+
   await pipelineEventBus.emitStage(runId, "input_scan", "started");
-  const l1Results = inputScan(ticket.subject, ticket.body);
+  const l1Results = inputScan(ticket.subject, latestInboundBody);
   const flags = {
     injectionFlag: l1Results.find((r) => r.check === "injection_phrase")?.passed === false,
     secretExtractionFlag: l1Results.find((r) => r.check === "secret_extraction")?.passed === false,
@@ -58,7 +69,7 @@ export async function runTriage(
     passed: true,
   });
 
-  const userPrompt = buildTriageUserPrompt(ticket, customer, order, flags);
+  const userPrompt = buildTriageUserPrompt(ticket, customer, order, latestInboundBody, flags);
 
   let raw = "";
   let modelProvider = "";
@@ -114,6 +125,15 @@ export async function runTriage(
 
   await pipelineEventBus.emitStage(runId, "triage", "completed", { category: result.category });
   await updateTicketTriage(ticket.ticket_id, result);
+
+  // LLD_v2 §5: "open → in_progress (first triage or agent opens it)" and
+  // "customer_replied → in_progress (agent re-runs pipeline)". Any other
+  // status (in_progress itself, awaiting_customer, resolved, closed) is left
+  // alone — re-triage is always allowed (HLD invariant #9 comment in
+  // tickets.ts) but doesn't force a status change from those states.
+  if (canTransition(ticket.status, "in_progress")) {
+    await updateTicketStatus(ticket.ticket_id, "in_progress");
+  }
   await insertAgentRun({
     run_id: runId,
     ticket_id: ticket.ticket_id,

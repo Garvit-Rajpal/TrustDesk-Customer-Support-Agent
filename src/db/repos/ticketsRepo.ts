@@ -1,6 +1,6 @@
 import { pool } from "../pool.js";
 import { Ticket, SeedTicket } from "../../domain/entities.js";
-import type { TriageResult } from "../../domain/schemas.js";
+import type { TicketStatus, TriageResult } from "../../domain/schemas.js";
 
 export async function upsertSeedTicket(ticket: SeedTicket): Promise<void> {
   await pool.query(
@@ -44,6 +44,12 @@ export async function updateTicketTriage(ticketId: string, triage: TriageResult)
     ticketId,
     JSON.stringify(triage),
   ]);
+}
+
+// V2-4 (LLD_v2 §5): legality is enforced by the caller (services/ticketStatus.ts
+// canTransition) before this is ever called — this repo function just writes.
+export async function updateTicketStatus(ticketId: string, status: TicketStatus): Promise<void> {
+  await pool.query(`UPDATE tickets SET status = $2 WHERE ticket_id = $1`, [ticketId, status]);
 }
 
 export interface TicketFilters {

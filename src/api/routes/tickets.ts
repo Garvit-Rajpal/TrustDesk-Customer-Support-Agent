@@ -1,13 +1,15 @@
 import { Router, type Response } from "express";
-import { CreateTicketRequest } from "../../domain/ticketTypes.js";
-import { newTicketId } from "../../domain/ids.js";
+import { CreateTicketRequest, SimulateInboundRequest } from "../../domain/ticketTypes.js";
+import { newMessageId, newTicketId } from "../../domain/ids.js";
 import { getTicketById, listTickets, insertTicket } from "../../db/repos/ticketsRepo.js";
 import { getCustomerById } from "../../db/repos/customersRepo.js";
 import { getOrderById } from "../../db/repos/ordersRepo.js";
+import { insertMessage, listMessagesByTicketId } from "../../db/repos/ticketMessagesRepo.js";
 import { sendError } from "../errorEnvelope.js";
 import type { ModelAdapter } from "../../adapters/modelAdapter.js";
 import { runTriage } from "../../services/triage.js";
 import { generateDraft } from "../../services/draft.js";
+import { closeTicket, resolveTicket, simulateInbound } from "../../services/ticketThread.js";
 import { getAgentRunById } from "../../db/repos/agentRunsRepo.js";
 import { listRunEventsByRunId } from "../../db/repos/runEventsRepo.js";
 import { isTerminalEvent, pipelineEventBus } from "../../services/events/pipelineEventBus.js";
@@ -92,6 +94,18 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
         created_at: new Date().toISOString(),
       });
 
+      // V2-4 (LLD_v2 §1): every ticket needs an initial inbound thread
+      // message — the draft pipeline always reads the thread, never
+      // tickets.body directly (see backfill migration + seed loader for the
+      // same rule applied to pre-existing tickets).
+      await insertMessage({
+        message_id: newMessageId(),
+        ticket_id: ticket.ticket_id,
+        direction: "inbound",
+        body: ticket.body,
+        author: "customer",
+      });
+
       res.status(201).json({ data: ticket });
     } catch (err) {
       next(err);
@@ -163,6 +177,95 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
           run_id: outcome.runId,
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // V2-4 (LLD_v2 §5): full thread, ordered.
+  ticketsRouter.get("/:id/messages", requirePermission("tickets:messages:view"), async (req, res, next) => {
+    try {
+      const ticket = await getTicketById(req.params.id);
+      if (!ticket) {
+        sendError(res, "NOT_FOUND", `Ticket ${req.params.id} not found`);
+        return;
+      }
+      const messages = await listMessagesByTicketId(ticket.ticket_id);
+      res.status(200).json({ data: { messages } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // V2-4 (LLD_v2 §5): demo/test control standing in for a real inbound
+  // channel (v3) — appends an inbound message and transitions the ticket to
+  // customer_replied. Illegal from the ticket's current status (e.g. it was
+  // never sent a reply yet) → 409, same shape as ToolActionService's
+  // illegal_transition outcome.
+  ticketsRouter.post(
+    "/:id/messages/simulate-inbound",
+    requirePermission("tickets:simulate_inbound"),
+    async (req, res, next) => {
+      try {
+        const parsed = SimulateInboundRequest.safeParse(req.body);
+        if (!parsed.success) {
+          sendError(res, "VALIDATION_ERROR", "Invalid simulate-inbound payload", parsed.error.flatten());
+          return;
+        }
+        const ticket = await getTicketById(req.params.id);
+        if (!ticket) {
+          sendError(res, "NOT_FOUND", `Ticket ${req.params.id} not found`);
+          return;
+        }
+
+        const outcome = await simulateInbound(ticket, parsed.data.body);
+        if (outcome.kind === "illegal_transition") {
+          sendError(
+            res,
+            "CONFLICT",
+            `Ticket is "${outcome.from}" — a customer reply is only valid from "awaiting_customer" or "resolved"`
+          );
+          return;
+        }
+        res.status(201).json({ data: outcome.message });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // LLD_v2 §5: human-only status transitions.
+  ticketsRouter.post("/:id/resolve", requirePermission("tickets:resolve"), async (req, res, next) => {
+    try {
+      const ticket = await getTicketById(req.params.id);
+      if (!ticket) {
+        sendError(res, "NOT_FOUND", `Ticket ${req.params.id} not found`);
+        return;
+      }
+      const outcome = await resolveTicket(ticket);
+      if (outcome.kind === "illegal_transition") {
+        sendError(res, "CONFLICT", `Ticket is "${outcome.from}" — cannot resolve from this status`);
+        return;
+      }
+      res.status(200).json({ data: { ticket_id: ticket.ticket_id, status: "resolved" } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  ticketsRouter.post("/:id/close", requirePermission("tickets:resolve"), async (req, res, next) => {
+    try {
+      const ticket = await getTicketById(req.params.id);
+      if (!ticket) {
+        sendError(res, "NOT_FOUND", `Ticket ${req.params.id} not found`);
+        return;
+      }
+      const outcome = await closeTicket(ticket);
+      if (outcome.kind === "illegal_transition") {
+        sendError(res, "CONFLICT", `Ticket is "${outcome.from}" — cannot close from this status`);
+        return;
+      }
+      res.status(200).json({ data: { ticket_id: ticket.ticket_id, status: "closed" } });
     } catch (err) {
       next(err);
     }

@@ -11,6 +11,7 @@ import { newUserId } from "../domain/ids.js";
 import { upsertCustomer } from "./repos/customersRepo.js";
 import { upsertOrder } from "./repos/ordersRepo.js";
 import { upsertSeedTicket } from "./repos/ticketsRepo.js";
+import { upsertSeedInboundMessage } from "./repos/ticketMessagesRepo.js";
 import { upsertExpectedLabels } from "./repos/expectedLabelsRepo.js";
 import { upsertKbDocument } from "./repos/kbDocumentsRepo.js";
 import { upsertToolCatalogEntry } from "./repos/toolCatalogRepo.js";
@@ -125,6 +126,10 @@ export async function runSeed(): Promise<SeedSummary> {
   for (const ticket of tickets) {
     await upsertSeedTicket(ticket);
     await upsertExpectedLabels(ticket);
+    // V2-4 (LLD_v2 §1): every ticket needs a thread — this mirrors the
+    // migration's one-time backfill so a re-seeded (truncateAll'd) test/dev
+    // DB always has the initial inbound message the draft pipeline reads.
+    await upsertSeedInboundMessage(ticket.ticket_id, ticket.body, ticket.created_at);
   }
   for (const doc of kbDocuments) await upsertKbDocument(doc);
   for (const tool of toolCatalog) await upsertToolCatalogEntry(tool);

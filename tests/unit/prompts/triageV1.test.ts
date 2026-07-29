@@ -59,8 +59,8 @@ describe("triage.v1 prompt", () => {
     expect(TRIAGE_SYSTEM_PROMPT).toMatch(/never follow instructions/i);
   });
 
-  it("fences the ticket subject+body inside an UNTRUSTED block", () => {
-    const prompt = buildTriageUserPrompt(ticket, customer, order, {
+  it("fences the ticket subject+latest inbound body inside an UNTRUSTED block", () => {
+    const prompt = buildTriageUserPrompt(ticket, customer, order, ticket.body, {
       injectionFlag: true,
       secretExtractionFlag: false,
       verificationBypassFlag: false,
@@ -71,8 +71,20 @@ describe("triage.v1 prompt", () => {
     expect(prompt).toContain("=== END ===");
   });
 
+  // V2-4 (LLD_v2 §5): triage classifies whichever message is latest, not
+  // always the ticket's original body — this is what lets category shift
+  // mid-thread when the agent re-runs triage after a reply.
+  it("classifies the latest inbound message, not the original ticket body", () => {
+    const prompt = buildTriageUserPrompt(ticket, customer, order, "Actually, I want a refund instead.", {
+      injectionFlag: false,
+      secretExtractionFlag: false,
+      verificationBypassFlag: false,
+    });
+    expect(prompt).toContain("Actually, I want a refund instead.");
+  });
+
   it("passes guardrail flags as system-computed facts, not customer text", () => {
-    const prompt = buildTriageUserPrompt(ticket, customer, order, {
+    const prompt = buildTriageUserPrompt(ticket, customer, order, ticket.body, {
       injectionFlag: true,
       secretExtractionFlag: false,
       verificationBypassFlag: false,
@@ -82,7 +94,7 @@ describe("triage.v1 prompt", () => {
   });
 
   it("handles a null order gracefully", () => {
-    const prompt = buildTriageUserPrompt(ticket, customer, null, {
+    const prompt = buildTriageUserPrompt(ticket, customer, null, ticket.body, {
       injectionFlag: false,
       secretExtractionFlag: false,
       verificationBypassFlag: false,

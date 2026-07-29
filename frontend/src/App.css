@@ -407,3 +407,42 @@ button:disabled {
   border-radius: 4px;
   font-size: 0.85rem;
 }
+
+.thread-panel {
+  margin: 1rem 0;
+}
+
+.thread-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.thread-message {
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  max-width: 70%;
+}
+
+.thread-message--inbound {
+  background: #f0f0f0;
+  align-self: flex-start;
+}
+
+.thread-message--outbound {
+  background: #e0e7ff;
+  align-self: flex-end;
+}
+
+.thread-message-meta {
+  font-size: 0.7rem;
+  color: #666;
+  margin-bottom: 0.15rem;
+}
+
+.thread-message-body {
+  white-space: pre-wrap;
+}

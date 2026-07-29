@@ -1,7 +1,7 @@
 // Entity-shaped zod schemas for seed data and repositories (LLD §2 DDL / §3).
 // These validate the raw seed JSON at load time and give repos typed rows.
 import { z } from "zod";
-import { Category, Priority, Sentiment } from "./schemas.js";
+import { Category, MessageDirection, Priority, Sentiment, TicketStatus } from "./schemas.js";
 
 export const Customer = z.object({
   customer_id: z.string(),
@@ -79,11 +79,25 @@ export const Ticket = z.object({
   channel: z.string(),
   subject: z.string(),
   body: z.string(),
-  status: z.string(),
+  status: TicketStatus,
   created_at: z.string(),
   triage: z.unknown().nullable(),
 });
 export type Ticket = z.infer<typeof Ticket>;
+
+// V2-4 (LLD_v2 §1/§5): one row per inbound/outbound message on a ticket's
+// thread. body is immutable after insert, same rule as v1 ticket.body
+// (HLD invariant #8).
+export const TicketMessage = z.object({
+  message_id: z.string(),
+  ticket_id: z.string(),
+  direction: MessageDirection,
+  body: z.string(),
+  author: z.string(),
+  draft_id: z.string().nullable(),
+  created_at: z.string(),
+});
+export type TicketMessage = z.infer<typeof TicketMessage>;
 
 export const KbDocumentInput = z.object({
   doc_id: z.string(),

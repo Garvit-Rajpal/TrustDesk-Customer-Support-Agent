@@ -42,6 +42,22 @@ export type RunStatus = z.infer<typeof RunStatus>;
 export const DraftStatus = z.enum(["generated", "edited", "approved", "rejected", "sent"]);
 export type DraftStatus = z.infer<typeof DraftStatus>;
 
+// V2-4 (LLD_v2 §1/§5): replaces the free-text ticket.status. Legal
+// transitions are enforced by src/services/ticketStatus.ts, not by this
+// enum alone — this just names the reachable states.
+export const TicketStatus = z.enum([
+  "open",
+  "in_progress",
+  "awaiting_customer",
+  "customer_replied",
+  "resolved",
+  "closed",
+]);
+export type TicketStatus = z.infer<typeof TicketStatus>;
+
+export const MessageDirection = z.enum(["inbound", "outbound"]);
+export type MessageDirection = z.infer<typeof MessageDirection>;
+
 export const ApprovalDecision = z.enum(["approved", "rejected", "needs_changes"]);
 export type ApprovalDecision = z.infer<typeof ApprovalDecision>;
 

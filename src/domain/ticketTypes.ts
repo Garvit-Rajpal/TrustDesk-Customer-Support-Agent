@@ -9,3 +9,10 @@ export const CreateTicketRequest = z.object({
   body: z.string().min(1),
 });
 export type CreateTicketRequest = z.infer<typeof CreateTicketRequest>;
+
+// V2-4 (LLD_v2 §5): POST /tickets/:id/messages/simulate-inbound — demo/test
+// control standing in for a real inbound channel (v3).
+export const SimulateInboundRequest = z.object({
+  body: z.string().min(1),
+});
+export type SimulateInboundRequest = z.infer<typeof SimulateInboundRequest>;
