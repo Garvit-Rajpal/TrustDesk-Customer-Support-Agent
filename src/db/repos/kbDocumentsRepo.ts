@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { pool } from "../pool.js";
 import { KbDocumentInput } from "../../domain/entities.js";
+import type { OrgContext } from "../../domain/orgContext.js";
 
 function checksum(content: string): string {
   return createHash("sha256").update(content).digest("hex");
@@ -8,7 +9,12 @@ function checksum(content: string): string {
 
 // Upsert by doc_id, skip write when checksum unchanged (LLD §4.2: "Upsert by
 // doc_id when checksum differs"). Returns true if a row was written.
-export async function upsertKbDocument(doc: KbDocumentInput): Promise<boolean> {
+// V2-5 (LLD_v2 §6): doc_id stays globally unique across orgs — pack
+// stamping (POST /orgs) prefixes stamped IDs with the org_id so a
+// pack-authored doc from two different orgs never collides; org_default
+// keeps the unprefixed v1 seed IDs. org_id defaults to 'org_default' for
+// the seed-loader call site; POST /orgs passes the new org's id explicitly.
+export async function upsertKbDocument(doc: KbDocumentInput, orgId = "org_default"): Promise<boolean> {
   const sum = checksum(doc.content);
   const { rows: existing } = await pool.query(
     `SELECT checksum FROM kb_documents WHERE doc_id = $1`,
@@ -19,13 +25,13 @@ export async function upsertKbDocument(doc: KbDocumentInput): Promise<boolean> {
   }
 
   await pool.query(
-    `INSERT INTO kb_documents (doc_id, title, content, source_path, version, audience, checksum)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO kb_documents (doc_id, title, content, source_path, version, audience, checksum, org_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (doc_id) DO UPDATE SET
        title = EXCLUDED.title, content = EXCLUDED.content, source_path = EXCLUDED.source_path,
        version = EXCLUDED.version, audience = EXCLUDED.audience, checksum = EXCLUDED.checksum,
-       updated_at = now()`,
-    [doc.doc_id, doc.title, doc.content, doc.source_path, doc.version, doc.audience, sum]
+       org_id = EXCLUDED.org_id, updated_at = now()`,
+    [doc.doc_id, doc.title, doc.content, doc.source_path, doc.version, doc.audience, sum, orgId]
   );
   return true;
 }
@@ -39,19 +45,20 @@ export interface KbDocumentRow {
   audience: string;
 }
 
-export async function getKbDocumentById(docId: string): Promise<KbDocumentRow | null> {
+export async function getKbDocumentById(ctx: OrgContext, docId: string): Promise<KbDocumentRow | null> {
   const { rows } = await pool.query(
     `SELECT doc_id, title, content, source_path, version, audience
-     FROM kb_documents WHERE doc_id = $1`,
-    [docId]
+     FROM kb_documents WHERE doc_id = $1 AND org_id = $2`,
+    [docId, ctx.org_id]
   );
   return rows[0] ?? null;
 }
 
-export async function listKbDocuments(): Promise<KbDocumentRow[]> {
+export async function listKbDocuments(ctx: OrgContext): Promise<KbDocumentRow[]> {
   const { rows } = await pool.query(
     `SELECT doc_id, title, content, source_path, version, audience
-     FROM kb_documents ORDER BY doc_id`
+     FROM kb_documents WHERE org_id = $1 ORDER BY doc_id`,
+    [ctx.org_id]
   );
   return rows;
 }
@@ -75,6 +82,7 @@ export interface SearchResultRow {
 // contain that word — the opposite of "boost" (LLD §4.3: "Optional category
 // boost term"). Docs matching the category get a ranking bonus instead.
 export async function searchKbDocuments(
+  ctx: OrgContext,
   query: string,
   category?: string
 ): Promise<SearchResultRow[]> {
@@ -87,10 +95,10 @@ export async function searchKbDocuments(
             ts_headline('english', content, websearch_to_tsquery('english', $1),
               'MaxFragments=1, MaxWords=35, MinWords=15') AS snippet
      FROM kb_documents
-     WHERE tsv @@ websearch_to_tsquery('english', $1)
+     WHERE tsv @@ websearch_to_tsquery('english', $1) AND org_id = $3
      ORDER BY score DESC
      LIMIT 5`,
-    [query, category ?? null]
+    [query, category ?? null, ctx.org_id]
   );
   return rows;
 }

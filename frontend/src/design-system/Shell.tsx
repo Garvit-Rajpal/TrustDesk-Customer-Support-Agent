@@ -14,11 +14,13 @@ export interface NavItem {
 export function Shell({
   navItems,
   displayName,
+  orgName,
   onLogout,
   children,
 }: {
   navItems: NavItem[];
   displayName: string;
+  orgName: string;
   onLogout: () => void;
   children: ReactNode;
 }) {
@@ -40,7 +42,7 @@ export function Shell({
       </aside>
       <div className="ds-shell-main">
         <header className="ds-topbar">
-          <span className="ds-topbar-org">org_default</span>
+          <span className="ds-topbar-org">{orgName}</span>
           <div className="ds-topbar-right">
             <span className="ds-topbar-user">{displayName}</span>
             <button className="link-button" onClick={onLogout}>

@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { clearRole, clearToken, getRole, getToken, type Role } from "./api.js";
+import {
+  clearOrg,
+  clearRole,
+  clearToken,
+  getOrgId,
+  getOrgName,
+  getRole,
+  getToken,
+  type Role,
+} from "./api.js";
 import { Login } from "./components/Login.js";
 import { Queue } from "./components/Queue.js";
 import { TicketView } from "./components/TicketView.js";
@@ -17,21 +26,37 @@ type View =
   | { name: "quality" }
   | { name: "admin" };
 
+interface Session {
+  displayName: string;
+  role: Role;
+  orgId: string;
+  orgName: string;
+}
+
 export default function App() {
-  const [session, setSession] = useState<{ displayName: string; role: Role } | null>(() => {
+  const [session, setSession] = useState<Session | null>(() => {
     const token = getToken();
     const role = getRole();
-    return token && role ? { displayName: "agent", role } : null;
+    const orgId = getOrgId();
+    const orgName = getOrgName();
+    // displayName isn't persisted (only role/org are) — on a hard reload
+    // this falls back to the role as a label until the user logs in again.
+    return token && role && orgId && orgName ? { displayName: role, role, orgId, orgName } : null;
   });
   const [view, setView] = useState<View>({ name: "queue" });
 
   if (!session) {
-    return <Login onLogin={(displayName, role) => setSession({ displayName, role })} />;
+    return (
+      <Login
+        onLogin={(displayName, role, orgId, orgName) => setSession({ displayName, role, orgId, orgName })}
+      />
+    );
   }
 
   function handleLogout() {
     clearToken();
     clearRole();
+    clearOrg();
     setSession(null);
     setView({ name: "queue" });
   }
@@ -83,7 +108,7 @@ export default function App() {
   ];
 
   return (
-    <Shell navItems={navItems} displayName={session.displayName} onLogout={handleLogout}>
+    <Shell navItems={navItems} displayName={session.displayName} orgName={session.orgName} onLogout={handleLogout}>
       {view.name === "queue" && <Queue onSelect={(ticketId) => setView({ name: "ticket", ticketId })} />}
       {view.name === "ticket" && (
         <TicketView ticketId={view.ticketId} onBack={() => setView({ name: "queue" })} role={session.role} />
@@ -91,7 +116,7 @@ export default function App() {
       {view.name === "documents" && <Documents role={session.role} />}
       {view.name === "eval" && <EvalReport role={session.role} />}
       {view.name === "quality" && canViewQuality && <QualityDashboard />}
-      {view.name === "admin" && session.role === "admin" && <Admin />}
+      {view.name === "admin" && session.role === "admin" && <Admin orgId={session.orgId} />}
     </Shell>
   );
 }

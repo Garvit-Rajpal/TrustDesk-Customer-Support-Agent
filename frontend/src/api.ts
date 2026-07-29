@@ -5,6 +5,8 @@
 // a package boundary that doesn't otherwise exist.
 const TOKEN_KEY = "trustdesk_token";
 const ROLE_KEY = "trustdesk_role";
+const ORG_ID_KEY = "trustdesk_org_id";
+const ORG_NAME_KEY = "trustdesk_org_name";
 
 export type Role = "agent" | "manager" | "admin";
 
@@ -32,6 +34,23 @@ export function clearRole(): void {
   localStorage.removeItem(ROLE_KEY);
 }
 
+// V2-5 (LLD_v2 §6/§8): "topbar (org name, user, logout)" — mirrors the
+// login response's org, same persist-across-reload pattern as role above.
+export function getOrgId(): string | null {
+  return localStorage.getItem(ORG_ID_KEY);
+}
+export function getOrgName(): string | null {
+  return localStorage.getItem(ORG_NAME_KEY);
+}
+export function setOrg(orgId: string, orgName: string): void {
+  localStorage.setItem(ORG_ID_KEY, orgId);
+  localStorage.setItem(ORG_NAME_KEY, orgName);
+}
+export function clearOrg(): void {
+  localStorage.removeItem(ORG_ID_KEY);
+  localStorage.removeItem(ORG_NAME_KEY);
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken();
   const res = await fetch(path, {
@@ -51,7 +70,64 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export interface LoginResult {
   token: string;
-  user: { user_id: string; display_name: string; role: Role };
+  user: { user_id: string; display_name: string; role: Role; org_id: string };
+  // V2-5 (LLD_v2 §6): "login response includes org."
+  org: { org_id: string; name: string; slug: string };
+}
+
+// V2-5 (LLD_v2 §1/§6).
+export type Vertical = "retail_ecommerce" | "software" | "finance";
+
+export interface Org {
+  org_id: string;
+  name: string;
+  slug: string;
+  vertical: Vertical;
+  created_at: string;
+}
+
+export interface CreateOrgInput {
+  name: string;
+  vertical: Vertical;
+  admin_username: string;
+  admin_password: string;
+  admin_display_name: string;
+}
+
+export interface CreateOrgResult {
+  org: Org;
+  admin_user_id: string;
+  document_ids: string[];
+}
+
+// V2-5 follow-up: POST /customers — a freshly onboarded org starts with
+// zero customers, and without this couldn't create a ticket either.
+export interface Customer {
+  customer_id: string;
+  name: string;
+  email: string;
+  tier: string;
+  country: string;
+  verified: boolean;
+  tags: string[];
+  created_at: string;
+}
+
+export interface CreateCustomerInput {
+  name: string;
+  email: string;
+  country: string;
+  tier?: string;
+  verified?: boolean;
+  tags?: string[];
+}
+
+export interface CreateTicketInput {
+  customer_id: string;
+  order_id?: string;
+  channel: string;
+  subject: string;
+  body: string;
 }
 
 export interface InviteUserInput {
@@ -188,7 +264,9 @@ export interface IngestDocumentInput {
   doc_id: string;
   title: string;
   content: string;
-  source_path: string;
+  // Provenance metadata, not a real file path — optional; the backend
+  // fills in a synthetic one when omitted (see POST /documents/ingest).
+  source_path?: string;
   version?: string;
   audience?: string;
 }
@@ -238,8 +316,12 @@ export const api = {
 
   listTickets: () => request<{ tickets: TicketSummary[] }>("GET", "/tickets"),
   getTicket: (id: string) => request<TicketDetail>("GET", `/tickets/${id}`),
+  createTicket: (input: CreateTicketInput) => request<TicketSummary>("POST", "/tickets", input),
   triage: (id: string) => request<TriageResult>("POST", `/tickets/${id}/triage`),
   draftReply: (id: string) => request<DraftResult>("POST", `/tickets/${id}/draft-reply`),
+
+  listCustomers: () => request<{ customers: Customer[] }>("GET", "/customers"),
+  createCustomer: (input: CreateCustomerInput) => request<Customer>("POST", "/customers", input),
 
   requestAction: (payload: { ticket_id: string; tool_name: string; payload: Record<string, unknown> }) =>
     request<ToolActionResult>("POST", "/tool-actions", payload),
@@ -284,4 +366,6 @@ export const api = {
     request<{ ticket_id: string; status: string }>("POST", `/tickets/${ticketId}/resolve`),
   closeTicket: (ticketId: string) =>
     request<{ ticket_id: string; status: string }>("POST", `/tickets/${ticketId}/close`),
+
+  createOrg: (input: CreateOrgInput) => request<CreateOrgResult>("POST", "/orgs", input),
 };

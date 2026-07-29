@@ -9,6 +9,7 @@ import { runEvalSet, loadEvalCases } from "../../src/services/evalRunner.js";
 import { MockModelAdapter } from "../../src/adapters/mock.js";
 import { DEFAULT_MODEL_SCENARIOS } from "../../src/adapters/defaultMockScenarios.js";
 import { getEvalRunById } from "../../src/db/repos/evalRunsRepo.js";
+import { ORG_DEFAULT } from "../helpers/org.js";
 
 describe("EvalRunner", () => {
   beforeAll(async () => {
@@ -65,7 +66,7 @@ describe("EvalRunner", () => {
     const adapter = new MockModelAdapter(DEFAULT_MODEL_SCENARIOS);
     const report = await runEvalSet(adapter);
 
-    const stored = await getEvalRunById(report.eval_run_id);
+    const stored = await getEvalRunById(ORG_DEFAULT, report.eval_run_id);
     expect(stored).not.toBeNull();
     expect(stored?.total_cases).toBe(8);
     expect(stored?.metrics).toEqual(report.metrics);

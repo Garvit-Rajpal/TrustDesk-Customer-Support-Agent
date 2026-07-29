@@ -21,13 +21,14 @@ draftsRouter.post("/:id/feedback", requirePermission("feedback:submit"), async (
       return;
     }
 
-    const draft = await getDraftById(req.params.id);
+    const ctx = req.orgContext!;
+    const draft = await getDraftById(ctx, req.params.id);
     if (!draft) {
       sendError(res, "NOT_FOUND", `Draft ${req.params.id} not found`);
       return;
     }
 
-    const { row, created } = await upsertFeedback({
+    const { row, created } = await upsertFeedback(ctx, {
       feedback_id: newFeedbackId(),
       ticket_id: draft.ticket_id,
       draft_id: draft.draft_id,
@@ -48,18 +49,19 @@ draftsRouter.post("/:id/feedback", requirePermission("feedback:submit"), async (
 // ticket's current status (e.g. it's already awaiting a reply) → 409.
 draftsRouter.post("/:id/send", requirePermission("drafts:send"), async (req, res, next) => {
   try {
-    const draft = await getDraftById(req.params.id);
+    const ctx = req.orgContext!;
+    const draft = await getDraftById(ctx, req.params.id);
     if (!draft) {
       sendError(res, "NOT_FOUND", `Draft ${req.params.id} not found`);
       return;
     }
-    const ticket = await getTicketById(draft.ticket_id);
+    const ticket = await getTicketById(ctx, draft.ticket_id);
     if (!ticket) {
       sendError(res, "NOT_FOUND", `Ticket ${draft.ticket_id} not found`);
       return;
     }
 
-    const outcome = await sendDraft(ticket, draft, req.user!.sub);
+    const outcome = await sendDraft(ctx, ticket, draft, req.user!.sub);
     if (outcome.kind === "illegal_transition") {
       sendError(
         res,

@@ -68,6 +68,24 @@ describe("documents API", () => {
       expect(first.body.data.ingested).toBe(0); // already ingested above, checksum unchanged
       expect(first.body.data.document_ids).toEqual(["KB-TEST-999"]);
     });
+
+    it("auto-generates source_path when omitted, instead of requiring one", async () => {
+      const res = await request(app)
+        .post("/documents/ingest")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          documents: [
+            { doc_id: "KB-TEST-NO-PATH", title: "No Path Doc", content: "Some content with no path." },
+          ],
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.data.ingested).toBe(1);
+
+      const fetched = await request(app)
+        .get("/documents/KB-TEST-NO-PATH")
+        .set("Authorization", `Bearer ${adminToken}`);
+      expect(fetched.body.data.source_path).toBe("manual-ingest/KB-TEST-NO-PATH");
+    });
   });
 
   describe("GET /documents/search", () => {

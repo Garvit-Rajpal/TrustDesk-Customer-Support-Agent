@@ -15,6 +15,7 @@ import path from "node:path";
 import type { ModelAdapter } from "../adapters/modelAdapter.js";
 import { EvalCase, EvalCaseResult, EvalMetrics } from "../domain/evalTypes.js";
 import { newEvalRunId } from "../domain/ids.js";
+import type { OrgContext } from "../domain/orgContext.js";
 import { getTicketById } from "../db/repos/ticketsRepo.js";
 import { getCustomerById } from "../db/repos/customersRepo.js";
 import { getOrderById } from "../db/repos/ordersRepo.js";
@@ -26,6 +27,13 @@ import { aggregateMetrics, failedCaseResult, scoreCase } from "./evalScorer.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EVAL_CASES_PATH = path.resolve(__dirname, "../../data/eval_cases.jsonl");
 
+// V2-5 (LLD_v2 §6): "Eval runner: scoped to org_default (the only org with
+// seeded eval cases); v1 metrics unchanged." Every eval case references a
+// seed ticket_id (tkt_9001 etc.), which only exists under org_default —
+// there's no case_id -> org mapping to derive a context from, so the
+// runner is hardcoded to the one tenant that has eval fixtures at all.
+const EVAL_ORG: OrgContext = { org_id: "org_default" };
+
 export async function loadEvalCases(): Promise<EvalCase[]> {
   const raw = await readFile(EVAL_CASES_PATH, "utf-8");
   return raw
@@ -36,14 +44,14 @@ export async function loadEvalCases(): Promise<EvalCase[]> {
 }
 
 async function runOneCase(modelAdapter: ModelAdapter, evalCase: EvalCase): Promise<EvalCaseResult> {
-  const ticket = await getTicketById(evalCase.ticket_id);
+  const ticket = await getTicketById(EVAL_ORG, evalCase.ticket_id);
   if (!ticket) {
     throw new Error(`eval case ${evalCase.case_id} references unknown ticket ${evalCase.ticket_id}`);
   }
-  const customer = await getCustomerById(ticket.customer_id);
-  const order = ticket.order_id ? await getOrderById(ticket.order_id) : null;
+  const customer = await getCustomerById(EVAL_ORG, ticket.customer_id);
+  const order = ticket.order_id ? await getOrderById(EVAL_ORG, ticket.order_id) : null;
 
-  const triageOutcome = await runTriage(modelAdapter, ticket, customer!, order);
+  const triageOutcome = await runTriage(EVAL_ORG, modelAdapter, ticket, customer!, order);
   if (triageOutcome.status === "failed") {
     return failedCaseResult(evalCase.case_id, evalCase.ticket_id, triageOutcome.runId);
   }
@@ -51,8 +59,8 @@ async function runOneCase(modelAdapter: ModelAdapter, evalCase: EvalCase): Promi
   // Re-fetch: generateDraft reads ticket.triage from the row, and runTriage
   // just persisted it (same "triage → retrieval → draft" order as the API,
   // HLD invariant #9).
-  const triagedTicket = await getTicketById(evalCase.ticket_id);
-  const draftOutcome = await generateDraft(modelAdapter, triagedTicket!, customer!, order);
+  const triagedTicket = await getTicketById(EVAL_ORG, evalCase.ticket_id);
+  const draftOutcome = await generateDraft(EVAL_ORG, modelAdapter, triagedTicket!, customer!, order);
 
   return scoreCase(
     evalCase.case_id,
@@ -97,7 +105,7 @@ export async function runEvalSet(
   const completedAt = new Date().toISOString();
   const evalRunId = newEvalRunId();
 
-  await insertEvalRun({
+  await insertEvalRun(EVAL_ORG, {
     eval_run_id: evalRunId,
     started_at: startedAt,
     completed_at: completedAt,

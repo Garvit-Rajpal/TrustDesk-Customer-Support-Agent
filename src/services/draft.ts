@@ -5,6 +5,7 @@
 // draft entirely in favor of a deterministic template (HLD invariant #5).
 import type { ModelAdapter } from "../adapters/modelAdapter.js";
 import type { Customer, Order, Ticket } from "../domain/entities.js";
+import type { OrgContext } from "../domain/orgContext.js";
 import { GuardrailResult, RawDraftOutput, TriageResult } from "../domain/schemas.js";
 import { newDraftId, newRunId } from "../domain/ids.js";
 import { inputScan } from "./guardrails/inputScan.js";
@@ -49,6 +50,7 @@ function tryParseDraft(raw: string): RawDraftOutput | null {
 }
 
 export async function generateDraft(
+  ctx: OrgContext,
   modelAdapter: ModelAdapter,
   ticket: Ticket,
   customer: Customer,
@@ -65,8 +67,8 @@ export async function generateDraft(
   // V2-4 (LLD_v2 §5): "draft targets the latest inbound message" — same
   // rationale as TriageService's latestInboundBody (see triage.ts).
   const [latestInbound, threadMessages] = await Promise.all([
-    getLatestInboundMessage(ticket.ticket_id),
-    listMessagesByTicketId(ticket.ticket_id),
+    getLatestInboundMessage(ctx, ticket.ticket_id),
+    listMessagesByTicketId(ctx, ticket.ticket_id),
   ]);
   const latestInboundBody = latestInbound?.body ?? ticket.body;
   // Prior messages only — the latest inbound one is shown separately in its
@@ -93,12 +95,13 @@ export async function generateDraft(
 
   await pipelineEventBus.emitStage(runId, "retrieval", "started");
   const searchResults = await searchDocuments(
+    ctx,
     buildBroadQueryText(`${ticket.subject} ${latestInboundBody}`),
     triage.category
   );
   const retrievedDocIds = searchResults.map((r) => r.doc_id);
   const retrievedDocs = (
-    await Promise.all(retrievedDocIds.map((id) => getKbDocumentById(id)))
+    await Promise.all(retrievedDocIds.map((id) => getKbDocumentById(ctx, id)))
   ).filter((d): d is NonNullable<typeof d> => d !== null);
   await pipelineEventBus.emitStage(runId, "retrieval", "completed", {
     doc_ids: retrievedDocIds,
@@ -109,7 +112,7 @@ export async function generateDraft(
   const facts = computeEligibilityFacts(ticket.created_at, order, customer);
   await pipelineEventBus.emitStage(runId, "eligibility", "completed");
 
-  const toolCatalog = await listToolCatalog();
+  const toolCatalog = await listToolCatalog(); // global reference data, not org-scoped (V2-5)
 
   const l2Result = GuardrailResult.parse({
     layer: "prompt_structure",
@@ -157,7 +160,7 @@ export async function generateDraft(
     parsed ? { resolution_type: parsed.resolution_type } : {}
   );
 
-  const allKbDocs = await listKbDocuments();
+  const allKbDocs = await listKbDocuments(ctx);
   const internalAudienceDocs = allKbDocs
     .filter((d) => d.audience !== STANDARD_AUDIENCE)
     .map((d) => ({ doc_id: d.doc_id, content: d.content }));
@@ -225,7 +228,7 @@ export async function generateDraft(
   });
 
   const draftId = newDraftId();
-  await insertDraft({
+  await insertDraft(ctx, {
     draft_id: draftId,
     ticket_id: ticket.ticket_id,
     run_id: runId,
@@ -236,7 +239,7 @@ export async function generateDraft(
     message_id: latestInbound?.message_id ?? null,
   });
 
-  await insertAgentRun({
+  await insertAgentRun(ctx, {
     run_id: runId,
     ticket_id: ticket.ticket_id,
     run_type: "draft_reply",

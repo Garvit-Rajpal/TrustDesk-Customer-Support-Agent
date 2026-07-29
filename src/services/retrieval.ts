@@ -1,6 +1,7 @@
 // RetrievalService (HLD ADR-2 / §3): interface-first seam so the FTS engine
 // can be swapped for Elasticsearch/pgvector later without touching callers.
 import { searchKbDocuments } from "../db/repos/kbDocumentsRepo.js";
+import type { OrgContext } from "../domain/orgContext.js";
 
 export interface RetrievedDocument {
   doc_id: string;
@@ -11,10 +12,11 @@ export interface RetrievedDocument {
 }
 
 export async function searchDocuments(
+  ctx: OrgContext,
   query: string,
   category?: string
 ): Promise<RetrievedDocument[]> {
-  const rows = await searchKbDocuments(query, category);
+  const rows = await searchKbDocuments(ctx, query, category);
   return rows.map((r) => ({
     doc_id: r.doc_id,
     title: r.title,

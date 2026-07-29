@@ -59,11 +59,40 @@ For a guided walkthrough (the three required scenarios + eval report), see
 | `JWT_SECRET` | HS256 signing secret for auth tokens | yes |
 | `OPENAI_API_KEY` | OpenRouter API key | no — falls back to `MockModelAdapter` demo scenarios if unset |
 | `OPENAI_BASE_URL` | OpenAI-compatible base URL (OpenRouter) | no — defaults to `https://openrouter.ai/api/v1` |
-| `MODEL_NAME` | Model identifier passed to OpenRouter | no — defaults to `openrouter/auto` |
+| `MODEL_NAME` | Model identifier passed to OpenRouter/Ollama | no — defaults to `openrouter/auto` (hosted) / `qwen2.5:3b` (local) |
+| `MODEL_TIER` | `mock` \| `local` \| `hosted` — see below | no — infers `hosted` if `OPENAI_API_KEY` is set, else `mock` |
+| `OPENAI_BASE_URL_LOCAL` | Ollama's OpenAI-compatible base URL | no — defaults to `http://localhost:11434/v1` |
 | `PORT` | API port | no — defaults to `3000` |
 | `SEED_AGENT_PASSWORD` / `SEED_MANAGER_PASSWORD` | Override the demo account passwords | no |
 
 `.env` is never committed; `.env.example` is kept current.
+
+### Model tiers (V2-6)
+
+`MODEL_TIER` picks the adapter `npm run dev`/`server.ts` boots with:
+
+- `mock` — `MockModelAdapter`'s canned demo scenarios. Deterministic, no network. Default when no `OPENAI_API_KEY` is set.
+- `hosted` — `OpenRouterAdapter` against OpenRouter. Requires `OPENAI_API_KEY`. Default when it *is* set.
+- `local` — `OpenRouterAdapter` pointed at a local [Ollama](https://ollama.com) instance instead (`http://localhost:11434/v1` by default), no API key required.
+
+To try the local tier:
+
+```bash
+brew install ollama        # or see ollama.com/download
+ollama serve                # separate terminal, or use the installed background service
+ollama pull qwen2.5:3b      # ~2GB download, matches MODEL_NAME's default
+MODEL_TIER=local npm run dev
+```
+
+`npm run smoke:local` runs the same happy-path (tkt_9001) + adversarial
+(tkt_9006) flow as `docs/DEMO_SCRIPT.md`, straight through the API layer
+(no browser needed), against whatever DB `DATABASE_URL` points at — run
+`npm run seed` first if it's empty. It prints a per-step PASS/WARN/FAIL
+report and always exits 0 on a completed run: a small local model's exact
+wording is expected to vary, so only the deterministic invariants (forced
+escalation on the injection attempt, catalog-gated approval, no
+unapproved coupon action) are hard requirements. **It is intentionally not
+part of `npm test`** — non-deterministic model tiers never gate CI.
 
 ## Loading data
 

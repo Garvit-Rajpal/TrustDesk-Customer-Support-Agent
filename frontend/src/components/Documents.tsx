@@ -135,7 +135,6 @@ function IngestForm({ onIngested }: { onIngested: () => void }) {
   const [docId, setDocId] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [sourcePath, setSourcePath] = useState("");
   const [audience, setAudience] = useState("Customer support agents");
   const [version, setVersion] = useState("2026.07");
   const [error, setError] = useState<string | null>(null);
@@ -146,9 +145,11 @@ function IngestForm({ onIngested }: { onIngested: () => void }) {
     setError(null);
     setBusy(true);
     try {
-      await api.ingestDocuments([
-        { doc_id: docId, title, content, source_path: sourcePath, audience, version },
-      ]);
+      // source_path is provenance metadata for docs that came from a real
+      // file (seed data, policy packs) — a document typed in here has no
+      // such path, so we simply don't send one; the backend fills in a
+      // synthetic label (see POST /documents/ingest).
+      await api.ingestDocuments([{ doc_id: docId, title, content, audience, version }]);
       onIngested();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ingest failed");
@@ -166,10 +167,6 @@ function IngestForm({ onIngested }: { onIngested: () => void }) {
       <label>
         title
         <input value={title} onChange={(e) => setTitle(e.target.value)} required />
-      </label>
-      <label>
-        source_path
-        <input value={sourcePath} onChange={(e) => setSourcePath(e.target.value)} placeholder="data/knowledge_base/custom.md" required />
       </label>
       <div className="ingest-row">
         <label>

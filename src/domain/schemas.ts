@@ -61,6 +61,12 @@ export type MessageDirection = z.infer<typeof MessageDirection>;
 export const ApprovalDecision = z.enum(["approved", "rejected", "needs_changes"]);
 export type ApprovalDecision = z.infer<typeof ApprovalDecision>;
 
+// V2-5 (LLD_v2 §1/§6): the three verticals a policy pack can be authored
+// for (src/policy_packs/{vertical}/*.md). CHECK constraint on orgs.vertical
+// mirrors this.
+export const Vertical = z.enum(["retail_ecommerce", "software", "finance"]);
+export type Vertical = z.infer<typeof Vertical>;
+
 export const TriageResult = z.object({
   category: Category,
   priority: Priority,

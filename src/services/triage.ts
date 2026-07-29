@@ -4,6 +4,7 @@
 // (HLD invariant #1).
 import type { ModelAdapter } from "../adapters/modelAdapter.js";
 import type { Customer, Order, Ticket } from "../domain/entities.js";
+import type { OrgContext } from "../domain/orgContext.js";
 import { GuardrailResult, TriageResult } from "../domain/schemas.js";
 import { newRunId } from "../domain/ids.js";
 import { inputScan } from "./guardrails/inputScan.js";
@@ -30,6 +31,7 @@ function tryParseTriage(raw: string): TriageResult | null {
 }
 
 export async function runTriage(
+  ctx: OrgContext,
   modelAdapter: ModelAdapter,
   ticket: Ticket,
   customer: Customer,
@@ -44,7 +46,7 @@ export async function runTriage(
   // injection appended via simulate-inbound becomes "latest" and gets
   // scanned the next time triage runs, even though it never touched
   // ticket.body itself.
-  const latestInbound = await getLatestInboundMessage(ticket.ticket_id);
+  const latestInbound = await getLatestInboundMessage(ctx, ticket.ticket_id);
   const latestInboundBody = latestInbound?.body ?? ticket.body;
 
   await pipelineEventBus.emitStage(runId, "input_scan", "started");
@@ -100,7 +102,7 @@ export async function runTriage(
 
   if (!parsed) {
     await pipelineEventBus.emitStage(runId, "triage", "failed");
-    await insertAgentRun({
+    await insertAgentRun(ctx, {
       run_id: runId,
       ticket_id: ticket.ticket_id,
       run_type: "triage",
@@ -124,7 +126,7 @@ export async function runTriage(
   const result: TriageResult = anyFlag ? { ...parsed, should_escalate: true } : parsed;
 
   await pipelineEventBus.emitStage(runId, "triage", "completed", { category: result.category });
-  await updateTicketTriage(ticket.ticket_id, result);
+  await updateTicketTriage(ctx, ticket.ticket_id, result);
 
   // LLD_v2 §5: "open → in_progress (first triage or agent opens it)" and
   // "customer_replied → in_progress (agent re-runs pipeline)". Any other
@@ -132,9 +134,9 @@ export async function runTriage(
   // alone — re-triage is always allowed (HLD invariant #9 comment in
   // tickets.ts) but doesn't force a status change from those states.
   if (canTransition(ticket.status, "in_progress")) {
-    await updateTicketStatus(ticket.ticket_id, "in_progress");
+    await updateTicketStatus(ctx, ticket.ticket_id, "in_progress");
   }
-  await insertAgentRun({
+  await insertAgentRun(ctx, {
     run_id: runId,
     ticket_id: ticket.ticket_id,
     run_type: "triage",

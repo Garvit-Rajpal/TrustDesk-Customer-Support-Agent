@@ -16,7 +16,12 @@ import { upsertExpectedLabels } from "./repos/expectedLabelsRepo.js";
 import { upsertKbDocument } from "./repos/kbDocumentsRepo.js";
 import { upsertToolCatalogEntry } from "./repos/toolCatalogRepo.js";
 import { getUserByUsername, upsertUser } from "./repos/usersRepo.js";
+import { upsertSeedOrg } from "./repos/orgsRepo.js";
 import { pool } from "./pool.js";
+
+// V2-5 (LLD_v2 §1/§6): the seed tenant every v1 fixture (unprefixed IDs)
+// belongs to.
+const DEFAULT_ORG_ID = "org_default";
 
 // No user seed data was provided by the requirements repo. Per ADR-4
 // ("accounts exist only via the seed script or env-configured bootstrap
@@ -69,6 +74,7 @@ async function seedUsers(): Promise<number> {
       password_hash,
       display_name: demo.display_name,
       role: demo.role,
+      org_id: DEFAULT_ORG_ID,
     });
   }
   return DEMO_USERS.length;
@@ -105,6 +111,16 @@ function parseKbMarkdown(content: string, sourcePath: string): KbDocumentInput {
 }
 
 export async function runSeed(): Promise<SeedSummary> {
+  // V2-5: must exist before any FK to it (users/customers/orders/tickets/
+  // kb_documents all reference orgs.org_id) — every seed upsert below
+  // already defaults its org_id param to 'org_default'.
+  await upsertSeedOrg({
+    org_id: DEFAULT_ORG_ID,
+    name: "Default Org",
+    slug: "DEFAULT",
+    vertical: "retail_ecommerce",
+  });
+
   const customers = (await readJson<unknown[]>("customers.json")).map((c) => Customer.parse(c));
   const orders = (await readJson<unknown[]>("orders.json")).map((o) => Order.parse(o));
   const tickets = (await readJson<unknown[]>("tickets.json")).map((t) => SeedTicket.parse(t));

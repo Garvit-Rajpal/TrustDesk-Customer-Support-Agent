@@ -30,7 +30,7 @@ export function buildEvalRunsRouter(modelAdapter: ModelAdapter): Router {
 
   evalRunsRouter.get("/:id", requirePermission("runs:view"), async (req, res, next) => {
     try {
-      const run = await getEvalRunById(req.params.id);
+      const run = await getEvalRunById(req.orgContext!, req.params.id);
       if (!run) {
         sendError(res, "NOT_FOUND", `Eval run ${req.params.id} not found`);
         return;

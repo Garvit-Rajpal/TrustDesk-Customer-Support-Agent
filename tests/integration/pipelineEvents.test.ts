@@ -12,6 +12,7 @@ import { getTicketById } from "../../src/db/repos/ticketsRepo.js";
 import { getCustomerById } from "../../src/db/repos/customersRepo.js";
 import { getOrderById } from "../../src/db/repos/ordersRepo.js";
 import { listRunEventsByRunId } from "../../src/db/repos/runEventsRepo.js";
+import { ORG_DEFAULT } from "../helpers/org.js";
 
 const VALID_TRIAGE = JSON.stringify({
   category: "refund",
@@ -29,10 +30,10 @@ const VALID_DRAFT = JSON.stringify({
 });
 
 async function loadFixture(ticketId: string) {
-  const ticket = await getTicketById(ticketId);
+  const ticket = await getTicketById(ORG_DEFAULT, ticketId);
   if (!ticket) throw new Error(`fixture ticket ${ticketId} missing`);
-  const customer = await getCustomerById(ticket.customer_id);
-  const order = ticket.order_id ? await getOrderById(ticket.order_id) : null;
+  const customer = await getCustomerById(ORG_DEFAULT, ticket.customer_id);
+  const order = ticket.order_id ? await getOrderById(ORG_DEFAULT, ticket.order_id) : null;
   return { ticket, customer: customer!, order };
 }
 
@@ -50,7 +51,7 @@ describe("pipeline events — persisted per stage", () => {
     const { ticket, customer, order } = await loadFixture("tkt_9001");
     const adapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_TRIAGE } });
 
-    const outcome = await runTriage(adapter, ticket, customer, order);
+    const outcome = await runTriage(ORG_DEFAULT, adapter, ticket, customer, order);
     expect(outcome.status).toBe("completed");
 
     const events = await listRunEventsByRunId(outcome.runId);
@@ -65,11 +66,11 @@ describe("pipeline events — persisted per stage", () => {
   it("never leaks draft body/citations/prompt text into a summary column", async () => {
     const { ticket, customer, order } = await loadFixture("tkt_9001");
     const triageAdapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_TRIAGE } });
-    await runTriage(triageAdapter, ticket, customer, order);
-    const triaged = await getTicketById("tkt_9001");
+    await runTriage(ORG_DEFAULT, triageAdapter, ticket, customer, order);
+    const triaged = await getTicketById(ORG_DEFAULT, "tkt_9001");
 
     const draftAdapter = new MockModelAdapter({ "tkt_9001:draft": { content: VALID_DRAFT } });
-    const outcome = await generateDraft(draftAdapter, triaged!, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, draftAdapter, triaged!, customer, order);
 
     const events = await listRunEventsByRunId(outcome.runId);
     expect(events.map((e) => e.stage)).toEqual([
@@ -115,8 +116,8 @@ describe("pipeline events — persisted per stage", () => {
         }),
       },
     });
-    await runTriage(triageAdapter, ticket, customer, order);
-    const triaged = await getTicketById("tkt_9006");
+    await runTriage(ORG_DEFAULT, triageAdapter, ticket, customer, order);
+    const triaged = await getTicketById(ORG_DEFAULT, "tkt_9006");
 
     // Draft body itself is benign schema-wise but the adversarial input
     // triggers the injection_phrase L1 flag, which the eligible seed ticket
@@ -133,7 +134,7 @@ describe("pipeline events — persisted per stage", () => {
         }),
       },
     });
-    const outcome = await generateDraft(draftAdapter, triaged!, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, draftAdapter, triaged!, customer, order);
     expect(outcome.resolutionType).toBe("escalated");
 
     const events = await listRunEventsByRunId(outcome.runId);

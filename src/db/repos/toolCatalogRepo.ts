@@ -1,6 +1,11 @@
 import { pool } from "../pool.js";
 import { ToolCatalogEntry } from "../../domain/entities.js";
 
+// V2-5: tool_catalog is not in LLD_v2 §1's org-scoped table list — it's
+// shared reference data (the same six tools/policies apply to every
+// vertical's pack), not per-tenant content, so no org_id column or ctx
+// param here.
+
 export async function upsertToolCatalogEntry(tool: ToolCatalogEntry): Promise<void> {
   await pool.query(
     `INSERT INTO tool_catalog

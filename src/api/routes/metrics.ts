@@ -12,12 +12,13 @@ export const metricsRouter = Router();
 // agent_runs, all broken down by ticket category — computeQualityMetrics is
 // the pure, unit-tested math (src/services/qualityMetrics.ts); this route
 // is just the three fetches that feed it.
-metricsRouter.get("/agent-quality", requirePermission("metrics:view"), async (_req, res, next) => {
+metricsRouter.get("/agent-quality", requirePermission("metrics:view"), async (req, res, next) => {
   try {
+    const ctx = req.orgContext!;
     const [feedback, approvals, agentRuns] = await Promise.all([
-      getCategorizedFeedback(),
-      getCategorizedApprovals(),
-      getCategorizedDraftRuns(),
+      getCategorizedFeedback(ctx),
+      getCategorizedApprovals(ctx),
+      getCategorizedDraftRuns(ctx),
     ]);
     const report = computeQualityMetrics({ feedback, approvals, agentRuns });
     res.status(200).json({ data: report });

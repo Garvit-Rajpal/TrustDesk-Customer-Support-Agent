@@ -5,6 +5,7 @@
 // from the reviewer" injection even if it reached this far).
 import { nanoid } from "nanoid";
 import type { Ticket } from "../domain/entities.js";
+import type { OrgContext } from "../domain/orgContext.js";
 import type { ActionStatus } from "../domain/schemas.js";
 import { TriageResult } from "../domain/schemas.js";
 import { newActionId, newApprovalId } from "../domain/ids.js";
@@ -32,6 +33,7 @@ export type RequestActionOutcome =
   | { kind: "replayed"; action: ToolActionRow };
 
 export async function requestToolAction(
+  ctx: OrgContext,
   ticket: Ticket,
   toolName: string,
   payload: Record<string, unknown>
@@ -79,7 +81,7 @@ export async function requestToolAction(
   // 5. idempotency: unseen key creates; seen key replays the stored result,
   // never re-executes (LLD §4.8).
   const idempotencyKey = String(payload.idempotency_key);
-  const existing = await getToolActionByIdempotencyKey(idempotencyKey);
+  const existing = await getToolActionByIdempotencyKey(ctx, idempotencyKey);
   if (existing) {
     return { kind: "replayed", action: existing };
   }
@@ -90,7 +92,7 @@ export async function requestToolAction(
   // for the same issue. Actions still sitting in approval_required don't
   // count yet; the matching guard at approve-time (below) is what prevents
   // two simultaneously-requested actions from both going through.
-  const activeConflict = await getActiveActionForTicket(ticket.ticket_id);
+  const activeConflict = await getActiveActionForTicket(ctx, ticket.ticket_id);
   if (activeConflict) {
     return {
       kind: "invalid",
@@ -101,7 +103,7 @@ export async function requestToolAction(
   const status: ActionStatus = tool.requires_human_approval ? "approval_required" : "approved";
 
   try {
-    const action = await insertToolAction({
+    const action = await insertToolAction(ctx, {
       action_id: newActionId(),
       ticket_id: ticket.ticket_id,
       tool_name: toolName,
@@ -116,7 +118,7 @@ export async function requestToolAction(
     // Race: two concurrent requests with the same key. The UNIQUE
     // constraint rejects the loser; treat it as a replay rather than a 500.
     if (isUniqueViolation(err)) {
-      const raced = await getToolActionByIdempotencyKey(idempotencyKey);
+      const raced = await getToolActionByIdempotencyKey(ctx, idempotencyKey);
       if (raced) return { kind: "replayed", action: raced };
     }
     throw err;
@@ -136,12 +138,13 @@ export type DecisionOutcome =
   | { kind: "ok"; action: ToolActionRow };
 
 export async function decideToolAction(
+  ctx: OrgContext,
   actionId: string,
   reviewerId: string,
   reason: string,
   decision: "approved" | "rejected"
 ): Promise<DecisionOutcome> {
-  const action = await getToolActionById(actionId);
+  const action = await getToolActionById(ctx, actionId);
   if (!action) return { kind: "not_found" };
   // Legal only from approval_required (LLD §4.9). Rejection is terminal —
   // no auto-retry loop (HLD §4.3).
@@ -155,20 +158,20 @@ export async function decideToolAction(
   // Rejection never triggers this — it can't create a second "resolved"
   // state, so it always skips this check.
   if (decision === "approved") {
-    const activeConflict = await getActiveActionForTicket(action.ticket_id, actionId);
+    const activeConflict = await getActiveActionForTicket(ctx, action.ticket_id, actionId);
     if (activeConflict) {
       return { kind: "ticket_locked", conflictingAction: activeConflict };
     }
   }
 
-  await insertApproval({
+  await insertApproval(ctx, {
     approval_id: newApprovalId(),
     action_id: actionId,
     reviewer_id: reviewerId,
     decision,
     reason,
   });
-  const updated = await updateToolActionStatus(actionId, decision);
+  const updated = await updateToolActionStatus(ctx, actionId, decision);
   return { kind: "ok", action: updated };
 }
 
@@ -188,8 +191,8 @@ export type ExecuteOutcome =
 // account lock) have no return/warranty window to violate.
 const ELIGIBILITY_GATED_TOOLS = new Set(["create_replacement_order", "start_refund_review"]);
 
-export async function executeToolAction(actionId: string): Promise<ExecuteOutcome> {
-  const action = await getToolActionById(actionId);
+export async function executeToolAction(ctx: OrgContext, actionId: string): Promise<ExecuteOutcome> {
+  const action = await getToolActionById(ctx, actionId);
   if (!action) return { kind: "not_found" };
 
   if (action.status === "executed") {
@@ -200,14 +203,14 @@ export async function executeToolAction(actionId: string): Promise<ExecuteOutcom
   }
 
   if (ELIGIBILITY_GATED_TOOLS.has(action.tool_name)) {
-    const ticket = await getTicketById(action.ticket_id);
-    const customer = await getCustomerById(ticket!.customer_id);
-    const order = ticket!.order_id ? await getOrderById(ticket!.order_id) : null;
+    const ticket = await getTicketById(ctx, action.ticket_id);
+    const customer = await getCustomerById(ctx, ticket!.customer_id);
+    const order = ticket!.order_id ? await getOrderById(ctx, ticket!.order_id) : null;
     const facts = computeEligibilityFacts(ticket!.created_at, order, customer!);
 
     const eligible = facts.return_window_eligible === true || facts.warranty_active === true;
     if (!eligible) {
-      const updated = await updateExecutionResult(actionId, "failed", {
+      const updated = await updateExecutionResult(ctx, actionId, "failed", {
         error: "Eligibility re-validation failed at execute time: return window and warranty both expired",
         facts,
       });
@@ -216,7 +219,7 @@ export async function executeToolAction(actionId: string): Promise<ExecuteOutcom
   }
 
   const result = mockExecute(action.tool_name, action.payload);
-  const updated = await updateExecutionResult(actionId, "executed", result);
+  const updated = await updateExecutionResult(ctx, actionId, "executed", result);
   return { kind: "executed", action: updated };
 }
 

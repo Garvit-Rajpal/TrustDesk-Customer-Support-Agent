@@ -26,6 +26,14 @@ export const PERMISSIONS = {
   "tickets:simulate_inbound": ["agent", "manager", "admin"],
   "drafts:send": ["agent", "manager", "admin"],
   "tickets:resolve": ["agent", "manager", "admin"],
+  // V2-5 (LLD_v2 §6 permission matrix row "invite users, onboard orgs |
+  // admin"): same tier as users:invite.
+  "orgs:create": ["admin"],
+  // V2-5 follow-up: POST /customers — same tier as tickets:write, since
+  // creating a customer record is a prerequisite step of the same "agent
+  // opens a demo ticket" flow (ADR-5), not a separate capability.
+  "customers:view": ["agent", "manager", "admin"],
+  "customers:write": ["agent", "manager", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

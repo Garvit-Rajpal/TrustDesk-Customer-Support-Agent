@@ -9,6 +9,7 @@ import { getTicketById } from "../../src/db/repos/ticketsRepo.js";
 import { getCustomerById } from "../../src/db/repos/customersRepo.js";
 import { getOrderById } from "../../src/db/repos/ordersRepo.js";
 import { getAgentRunById } from "../../src/db/repos/agentRunsRepo.js";
+import { ORG_DEFAULT } from "../helpers/org.js";
 
 const VALID_RESPONSE = JSON.stringify({
   category: "refund",
@@ -19,10 +20,10 @@ const VALID_RESPONSE = JSON.stringify({
 });
 
 async function loadFixture(ticketId: string) {
-  const ticket = await getTicketById(ticketId);
+  const ticket = await getTicketById(ORG_DEFAULT, ticketId);
   if (!ticket) throw new Error(`fixture ticket ${ticketId} missing`);
-  const customer = await getCustomerById(ticket.customer_id);
-  const order = ticket.order_id ? await getOrderById(ticket.order_id) : null;
+  const customer = await getCustomerById(ORG_DEFAULT, ticket.customer_id);
+  const order = ticket.order_id ? await getOrderById(ORG_DEFAULT, ticket.order_id) : null;
   return { ticket, customer: customer!, order };
 }
 
@@ -40,17 +41,17 @@ describe("triage flow", () => {
     const { ticket, customer, order } = await loadFixture("tkt_9001");
     const adapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_RESPONSE } });
 
-    const outcome = await runTriage(adapter, ticket, customer, order);
+    const outcome = await runTriage(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") throw new Error("unreachable");
     expect(outcome.result.category).toBe("refund");
     expect(outcome.result.should_escalate).toBe(false);
 
-    const updated = await getTicketById("tkt_9001");
+    const updated = await getTicketById(ORG_DEFAULT, "tkt_9001");
     expect(updated?.triage).toEqual(outcome.result);
 
-    const run = await getAgentRunById(outcome.runId);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     expect(run).not.toBeNull();
     expect(run?.run_type).toBe("triage");
     expect(run?.status).toBe("completed");
@@ -65,7 +66,7 @@ describe("triage flow", () => {
       "tkt_9002:triage": [{ content: "not valid json" }, { content: VALID_RESPONSE }],
     });
 
-    const outcome = await runTriage(adapter, ticket, customer, order);
+    const outcome = await runTriage(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.status).toBe("completed");
     expect(adapter.callCount("tkt_9002:triage")).toBe(2);
@@ -77,18 +78,18 @@ describe("triage flow", () => {
       "tkt_9003:triage": [{ content: "not json" }, { content: '{"category":"not-a-real-category"}' }],
     });
 
-    const outcome = await runTriage(adapter, ticket, customer, order);
+    const outcome = await runTriage(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.status).toBe("failed");
     expect(adapter.callCount("tkt_9003:triage")).toBe(2);
 
     if (outcome.status !== "failed") throw new Error("unreachable");
-    const run = await getAgentRunById(outcome.runId);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     expect(run?.status).toBe("failed");
     expect(run?.rejected_output).toBeTruthy();
 
     // Ticket triage must remain untouched on failure.
-    const stillUntriaged = await getTicketById("tkt_9003");
+    const stillUntriaged = await getTicketById(ORG_DEFAULT, "tkt_9003");
     expect(stillUntriaged?.triage).toBeNull();
   });
 
@@ -104,13 +105,13 @@ describe("triage flow", () => {
     });
     const adapter = new MockModelAdapter({ "tkt_9006:triage": { content: modelFooled } });
 
-    const outcome = await runTriage(adapter, ticket, customer, order);
+    const outcome = await runTriage(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") throw new Error("unreachable");
     expect(outcome.result.should_escalate).toBe(true);
 
-    const run = await getAgentRunById(outcome.runId);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     const injectionCheck = (run?.guardrail_results as Array<{ check: string; passed: boolean }>).find(
       (r) => r.check === "injection_phrase"
     );
@@ -128,7 +129,7 @@ describe("triage flow", () => {
     });
     const adapter = new MockModelAdapter({ "tkt_9007:triage": { content: modelFooled } });
 
-    const outcome = await runTriage(adapter, ticket, customer, order);
+    const outcome = await runTriage(ORG_DEFAULT, adapter, ticket, customer, order);
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") throw new Error("unreachable");
     expect(outcome.result.should_escalate).toBe(true);
@@ -138,7 +139,7 @@ describe("triage flow", () => {
     const { ticket, customer, order } = await loadFixture("tkt_9001");
     const adapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_RESPONSE } });
 
-    const outcome = await runTriage(adapter, ticket, customer, order);
+    const outcome = await runTriage(ORG_DEFAULT, adapter, ticket, customer, order);
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") throw new Error("unreachable");
     expect(outcome.result.should_escalate).toBe(false);
@@ -148,19 +149,19 @@ describe("triage flow", () => {
     const { ticket, customer, order } = await loadFixture("tkt_9001");
     const adapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_RESPONSE } });
 
-    const outcome = await runTriage(adapter, ticket, customer, order);
+    const outcome = await runTriage(ORG_DEFAULT, adapter, ticket, customer, order);
     if (outcome.status !== "completed") throw new Error("unreachable");
-    const run = await getAgentRunById(outcome.runId);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     const results = run?.guardrail_results as Array<{ passed: boolean }>;
     expect(results.every((r) => r.passed)).toBe(true);
   });
 
   it("handles a ticket with no linked order", async () => {
-    const ticket = await getTicketById("tkt_9001");
-    const customer = await getCustomerById("cus_1001");
+    const ticket = await getTicketById(ORG_DEFAULT, "tkt_9001");
+    const customer = await getCustomerById(ORG_DEFAULT, "cus_1001");
     const adapter = new MockModelAdapter({ "tkt_9001:triage": { content: VALID_RESPONSE } });
 
-    const outcome = await runTriage(adapter, ticket!, customer!, null);
+    const outcome = await runTriage(ORG_DEFAULT, adapter, ticket!, customer!, null);
     expect(outcome.status).toBe("completed");
   });
 });

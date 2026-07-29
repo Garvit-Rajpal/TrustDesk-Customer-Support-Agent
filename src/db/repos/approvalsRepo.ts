@@ -1,6 +1,7 @@
 import { pool } from "../pool.js";
 import type { ApprovalDecision } from "../../domain/schemas.js";
 import type { CategorizedApproval } from "../../services/qualityMetrics.js";
+import type { OrgContext } from "../../domain/orgContext.js";
 
 export interface NewApproval {
   approval_id: string;
@@ -10,11 +11,18 @@ export interface NewApproval {
   reason: string;
 }
 
-export async function insertApproval(approval: NewApproval): Promise<void> {
+export async function insertApproval(ctx: OrgContext, approval: NewApproval): Promise<void> {
   await pool.query(
-    `INSERT INTO approvals (approval_id, action_id, reviewer_id, decision, reason)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [approval.approval_id, approval.action_id, approval.reviewer_id, approval.decision, approval.reason]
+    `INSERT INTO approvals (approval_id, action_id, reviewer_id, decision, reason, org_id)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      approval.approval_id,
+      approval.action_id,
+      approval.reviewer_id,
+      approval.decision,
+      approval.reason,
+      ctx.org_id,
+    ]
   );
 }
 
@@ -22,13 +30,14 @@ export async function insertApproval(approval: NewApproval): Promise<void> {
 // only kind that exists today, draft-level approvals aren't wired up yet)
 // joined out to their ticket's triage category, for
 // GET /metrics/agent-quality's action_approval_rate.
-export async function getCategorizedApprovals(): Promise<CategorizedApproval[]> {
-  const { rows } = await pool.query(`
-    SELECT t.triage->>'category' AS category, ap.decision
-    FROM approvals ap
-    JOIN tool_actions ta ON ap.action_id = ta.action_id
-    JOIN tickets t ON ta.ticket_id = t.ticket_id
-    WHERE ap.action_id IS NOT NULL AND t.triage IS NOT NULL
-  `);
+export async function getCategorizedApprovals(ctx: OrgContext): Promise<CategorizedApproval[]> {
+  const { rows } = await pool.query(
+    `SELECT t.triage->>'category' AS category, ap.decision
+     FROM approvals ap
+     JOIN tool_actions ta ON ap.action_id = ta.action_id
+     JOIN tickets t ON ta.ticket_id = t.ticket_id
+     WHERE ap.action_id IS NOT NULL AND t.triage IS NOT NULL AND ap.org_id = $1`,
+    [ctx.org_id]
+  );
   return rows;
 }

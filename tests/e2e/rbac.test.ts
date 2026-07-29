@@ -169,6 +169,21 @@ const ROUTE_CASES: RouteCase[] = [
     request: (t) =>
       request(app).post("/tickets/tkt_does_not_exist/close").set("Authorization", `Bearer ${t}`),
   },
+  {
+    name: "POST /orgs",
+    allowedRoles: ["admin"],
+    request: (t) => request(app).post("/orgs").set("Authorization", `Bearer ${t}`).send({}),
+  },
+  {
+    name: "GET /customers",
+    allowedRoles: ["agent", "manager", "admin"],
+    request: (t) => request(app).get("/customers").set("Authorization", `Bearer ${t}`),
+  },
+  {
+    name: "POST /customers",
+    allowedRoles: ["agent", "manager", "admin"],
+    request: (t) => request(app).post("/customers").set("Authorization", `Bearer ${t}`).send({}),
+  },
 ];
 
 // Single top-level beforeAll/afterAll: this file has two logical groups of

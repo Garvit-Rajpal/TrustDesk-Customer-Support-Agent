@@ -14,16 +14,17 @@ import { getTicketById, updateTicketTriage, insertTicket } from "../../src/db/re
 import { decideToolAction, executeToolAction, requestToolAction } from "../../src/services/toolActions.js";
 import { newTicketId } from "../../src/domain/ids.js";
 import { getUserByUsername } from "../../src/db/repos/usersRepo.js";
+import { ORG_DEFAULT } from "../helpers/org.js";
 
 async function triagedTicket(ticketId: string, category: string) {
-  await updateTicketTriage(ticketId, {
+  await updateTicketTriage(ORG_DEFAULT, ticketId, {
     category: category as never,
     priority: "medium",
     sentiment: "frustrated",
     should_escalate: false,
     reason_summary: "x",
   });
-  return (await getTicketById(ticketId))!;
+  return (await getTicketById(ORG_DEFAULT, ticketId))!;
 }
 
 // approvals.reviewer_id is a real FK to users — reject/approve tests need a
@@ -44,13 +45,13 @@ afterAll(async () => {
 describe("ToolActionService.requestToolAction — validation ladder", () => {
   it("rejects an unknown tool", async () => {
     const ticket = await triagedTicket("tkt_9001", "refund");
-    const outcome = await requestToolAction(ticket, "delete_everything", {});
+    const outcome = await requestToolAction(ORG_DEFAULT, ticket, "delete_everything", {});
     expect(outcome.kind).toBe("invalid");
   });
 
   it("rejects a request missing required fields", async () => {
     const ticket = await triagedTicket("tkt_9001", "refund");
-    const outcome = await requestToolAction(ticket, "create_replacement_order", {
+    const outcome = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       // missing sku, reason, idempotency_key
     });
@@ -62,7 +63,7 @@ describe("ToolActionService.requestToolAction — validation ladder", () => {
 
   it("rejects an untriaged ticket", async () => {
     const freshId = newTicketId();
-    await insertTicket({
+    await insertTicket(ORG_DEFAULT, {
       ticket_id: freshId,
       customer_id: "cus_1001",
       order_id: "ord_5001",
@@ -71,8 +72,8 @@ describe("ToolActionService.requestToolAction — validation ladder", () => {
       body: "y",
       created_at: new Date().toISOString(),
     });
-    const ticket = (await getTicketById(freshId))!;
-    const outcome = await requestToolAction(ticket, "create_replacement_order", {
+    const ticket = (await getTicketById(ORG_DEFAULT, freshId))!;
+    const outcome = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "damaged",
@@ -84,7 +85,7 @@ describe("ToolActionService.requestToolAction — validation ladder", () => {
 
   it("rejects a tool not allowed for the ticket's category", async () => {
     const ticket = await triagedTicket("tkt_9001", "shipping"); // create_replacement_order needs refund/warranty
-    const outcome = await requestToolAction(ticket, "create_replacement_order", {
+    const outcome = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "damaged",
@@ -96,7 +97,7 @@ describe("ToolActionService.requestToolAction — validation ladder", () => {
 
   it("rejects an amount over max_amount_inr", async () => {
     const ticket = await triagedTicket("tkt_9006", "general");
-    const outcome = await requestToolAction(ticket, "issue_coupon", {
+    const outcome = await requestToolAction(ORG_DEFAULT, ticket, "issue_coupon", {
       customer_id: "cus_1006",
       amount: 5000,
       reason: "goodwill",
@@ -108,7 +109,7 @@ describe("ToolActionService.requestToolAction — validation ladder", () => {
 
   it("accepts an amount at or under max_amount_inr", async () => {
     const ticket = await triagedTicket("tkt_9006", "general");
-    const outcome = await requestToolAction(ticket, "issue_coupon", {
+    const outcome = await requestToolAction(ORG_DEFAULT, ticket, "issue_coupon", {
       customer_id: "cus_1006",
       amount: 1000,
       reason: "goodwill",
@@ -119,7 +120,7 @@ describe("ToolActionService.requestToolAction — validation ladder", () => {
 
   it("creates with status approval_required when the catalog requires it", async () => {
     const ticket = await triagedTicket("tkt_9001", "refund");
-    const outcome = await requestToolAction(ticket, "create_replacement_order", {
+    const outcome = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "damaged",
@@ -131,7 +132,7 @@ describe("ToolActionService.requestToolAction — validation ladder", () => {
 
   it("creates with status approved (auto) when the catalog does not require approval", async () => {
     const ticket = await triagedTicket("tkt_9002", "shipping");
-    const outcome = await requestToolAction(ticket, "open_carrier_investigation", {
+    const outcome = await requestToolAction(ORG_DEFAULT, ticket, "open_carrier_investigation", {
       order_id: "ord_5002",
       tracking_number: "BLUETRK10002",
       reason: "stale tracking",
@@ -149,8 +150,8 @@ describe("ToolActionService.requestToolAction — validation ladder", () => {
       reason: "damaged",
       idempotency_key: "tkt_9001-replacement-idem-test",
     };
-    const first = await requestToolAction(ticket, "create_replacement_order", payload);
-    const second = await requestToolAction(ticket, "create_replacement_order", payload);
+    const first = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", payload);
+    const second = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", payload);
 
     expect(first.kind).toBe("created");
     expect(second.kind).toBe("replayed");
@@ -169,7 +170,7 @@ describe("ToolActionService.requestToolAction — validation ladder", () => {
 describe("ToolActionService — approve/reject state machine", () => {
   async function createApprovalRequiredAction(key: string) {
     const ticket = await triagedTicket("tkt_9001", "refund");
-    const outcome = await requestToolAction(ticket, "create_replacement_order", {
+    const outcome = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "damaged",
@@ -181,94 +182,94 @@ describe("ToolActionService — approve/reject state machine", () => {
 
   it("approves from approval_required", async () => {
     const action = await createApprovalRequiredAction("tkt_9001-replacement-a1");
-    const outcome = await decideToolAction(action.action_id, reviewerId, "looks good", "approved");
+    const outcome = await decideToolAction(ORG_DEFAULT, action.action_id, reviewerId, "looks good", "approved");
     expect(outcome.kind).toBe("ok");
     if (outcome.kind === "ok") expect(outcome.action.status).toBe("approved");
   });
 
   it("rejects from approval_required, terminally", async () => {
     const action = await createApprovalRequiredAction("tkt_9001-replacement-a2");
-    const outcome = await decideToolAction(action.action_id, reviewerId, "not eligible", "rejected");
+    const outcome = await decideToolAction(ORG_DEFAULT, action.action_id, reviewerId, "not eligible", "rejected");
     expect(outcome.kind).toBe("ok");
     if (outcome.kind === "ok") expect(outcome.action.status).toBe("rejected");
 
     // Terminal: a second decision on a rejected action is illegal.
-    const second = await decideToolAction(action.action_id, reviewerId, "changed my mind", "approved");
+    const second = await decideToolAction(ORG_DEFAULT, action.action_id, reviewerId, "changed my mind", "approved");
     expect(second.kind).toBe("illegal_transition");
   });
 
   it("404s (not_found) for an unknown action id", async () => {
-    const outcome = await decideToolAction("act_does_not_exist", reviewerId, "x", "approved");
+    const outcome = await decideToolAction(ORG_DEFAULT, "act_does_not_exist", reviewerId, "x", "approved");
     expect(outcome.kind).toBe("not_found");
   });
 
   it("cannot approve an already-approved action", async () => {
     const action = await createApprovalRequiredAction("tkt_9001-replacement-a3");
-    await decideToolAction(action.action_id, reviewerId, "ok", "approved");
-    const second = await decideToolAction(action.action_id, reviewerId, "ok again", "approved");
+    await decideToolAction(ORG_DEFAULT, action.action_id, reviewerId, "ok", "approved");
+    const second = await decideToolAction(ORG_DEFAULT, action.action_id, reviewerId, "ok again", "approved");
     expect(second.kind).toBe("illegal_transition");
     if (second.kind === "illegal_transition") expect(second.from).toBe("approved");
   });
 
   it("cannot approve/reject an auto-approved action (never entered approval_required)", async () => {
     const ticket = await triagedTicket("tkt_9002", "shipping");
-    const created = await requestToolAction(ticket, "open_carrier_investigation", {
+    const created = await requestToolAction(ORG_DEFAULT, ticket, "open_carrier_investigation", {
       order_id: "ord_5002",
       tracking_number: "BLUETRK10002",
       reason: "stale tracking",
       idempotency_key: "tkt_9002-investigation-approve-test",
     });
     if (created.kind !== "created") throw new Error("fixture setup failed");
-    const outcome = await decideToolAction(created.action.action_id, reviewerId, "x", "approved");
+    const outcome = await decideToolAction(ORG_DEFAULT, created.action.action_id, reviewerId, "x", "approved");
     expect(outcome.kind).toBe("illegal_transition");
   });
 });
 
 describe("ToolActionService.executeToolAction — execute + re-validation", () => {
   it("404s (not_found) for an unknown action id", async () => {
-    const outcome = await executeToolAction("act_does_not_exist");
+    const outcome = await executeToolAction(ORG_DEFAULT, "act_does_not_exist");
     expect(outcome.kind).toBe("not_found");
   });
 
   it("cannot execute from approval_required (must be approved first)", async () => {
     const ticket = await triagedTicket("tkt_9001", "refund");
-    const created = await requestToolAction(ticket, "create_replacement_order", {
+    const created = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "damaged",
       idempotency_key: "tkt_9001-execute-illegal",
     });
     if (created.kind !== "created") throw new Error("fixture setup failed");
-    const outcome = await executeToolAction(created.action.action_id);
+    const outcome = await executeToolAction(ORG_DEFAULT, created.action.action_id);
     expect(outcome.kind).toBe("illegal_transition");
   });
 
   it("cannot execute a rejected action", async () => {
     const ticket = await triagedTicket("tkt_9001", "refund");
-    const created = await requestToolAction(ticket, "create_replacement_order", {
+    const created = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "damaged",
       idempotency_key: "tkt_9001-execute-rejected",
     });
     if (created.kind !== "created") throw new Error("fixture setup failed");
-    await decideToolAction(created.action.action_id, reviewerId, "no", "rejected");
-    const outcome = await executeToolAction(created.action.action_id);
+    await decideToolAction(ORG_DEFAULT, created.action.action_id, reviewerId, "no", "rejected");
+    const outcome = await executeToolAction(ORG_DEFAULT, created.action.action_id);
     expect(outcome.kind).toBe("illegal_transition");
   });
 
   it("executes an approved, eligible action and stores a mock execution result", async () => {
     const ticket = await triagedTicket("tkt_9001", "refund"); // within return window
-    const created = await requestToolAction(ticket, "create_replacement_order", {
+    const created = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "damaged",
       idempotency_key: "tkt_9001-execute-happy",
     });
     if (created.kind !== "created") throw new Error("fixture setup failed");
-    await decideToolAction(created.action.action_id, reviewerId, "ok", "approved");
+    await decideToolAction(ORG_DEFAULT, created.action.action_id, reviewerId, "ok", "approved");
 
-    const outcome = await executeToolAction(created.action.action_id);
+    const outcome = await executeToolAction(ORG_DEFAULT, created.action.action_id);
     expect(outcome.kind).toBe("executed");
     if (outcome.kind === "executed") {
       expect(outcome.action.status).toBe("executed");
@@ -278,16 +279,16 @@ describe("ToolActionService.executeToolAction — execute + re-validation", () =
 
   it("replays on re-execution of an already-executed action", async () => {
     const ticket = await triagedTicket("tkt_9001", "refund");
-    const created = await requestToolAction(ticket, "create_replacement_order", {
+    const created = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "damaged",
       idempotency_key: "tkt_9001-execute-replay",
     });
     if (created.kind !== "created") throw new Error("fixture setup failed");
-    await decideToolAction(created.action.action_id, reviewerId, "ok", "approved");
-    const first = await executeToolAction(created.action.action_id);
-    const second = await executeToolAction(created.action.action_id);
+    await decideToolAction(ORG_DEFAULT, created.action.action_id, reviewerId, "ok", "approved");
+    const first = await executeToolAction(ORG_DEFAULT, created.action.action_id);
+    const second = await executeToolAction(ORG_DEFAULT, created.action.action_id);
 
     expect(first.kind).toBe("executed");
     expect(second.kind).toBe("replayed");
@@ -301,7 +302,7 @@ describe("ToolActionService.executeToolAction — execute + re-validation", () =
     // 12-month warranty have lapsed for its order — nothing in the request
     // ladder checks this (it's not eligibility-aware), only execute does.
     const staleTicketId = newTicketId();
-    await insertTicket({
+    await insertTicket(ORG_DEFAULT, {
       ticket_id: staleTicketId,
       customer_id: "cus_1003",
       order_id: "ord_5003", // delivered 2026-06-14, return window ends 2026-06-21
@@ -312,16 +313,16 @@ describe("ToolActionService.executeToolAction — execute + re-validation", () =
     });
     const ticket = await triagedTicket(staleTicketId, "refund");
 
-    const created = await requestToolAction(ticket, "create_replacement_order", {
+    const created = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5003",
       sku: "BG-CAM-02",
       reason: "damaged",
       idempotency_key: `${staleTicketId}-replacement-1`,
     });
     if (created.kind !== "created") throw new Error("fixture setup failed");
-    await decideToolAction(created.action.action_id, reviewerId, "approved without checking", "approved");
+    await decideToolAction(ORG_DEFAULT, created.action.action_id, reviewerId, "approved without checking", "approved");
 
-    const outcome = await executeToolAction(created.action.action_id);
+    const outcome = await executeToolAction(ORG_DEFAULT, created.action.action_id);
     expect(outcome.kind).toBe("failed");
     if (outcome.kind === "failed") {
       expect(outcome.action.status).toBe("failed");
@@ -331,7 +332,7 @@ describe("ToolActionService.executeToolAction — execute + re-validation", () =
 
   it("does not eligibility-gate tools with no return/warranty window (e.g. carrier investigation)", async () => {
     const ticket = await triagedTicket("tkt_9002", "shipping");
-    const created = await requestToolAction(ticket, "open_carrier_investigation", {
+    const created = await requestToolAction(ORG_DEFAULT, ticket, "open_carrier_investigation", {
       order_id: "ord_5002",
       tracking_number: "BLUETRK10002",
       reason: "stale tracking",
@@ -339,7 +340,7 @@ describe("ToolActionService.executeToolAction — execute + re-validation", () =
     });
     if (created.kind !== "created") throw new Error("fixture setup failed");
     // open_carrier_investigation auto-approves; no separate approve call needed.
-    const outcome = await executeToolAction(created.action.action_id);
+    const outcome = await executeToolAction(ORG_DEFAULT, created.action.action_id);
     expect(outcome.kind).toBe("executed");
   });
 });
@@ -347,16 +348,16 @@ describe("ToolActionService.executeToolAction — execute + re-validation", () =
 describe("ToolActionService — one active action per ticket", () => {
   it("rejects a new request once another action for the ticket is approved", async () => {
     const ticket = await triagedTicket("tkt_9001", "refund");
-    const first = await requestToolAction(ticket, "create_replacement_order", {
+    const first = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "damaged",
       idempotency_key: "tkt_9001-conflict-1",
     });
     if (first.kind !== "created") throw new Error("fixture setup failed");
-    await decideToolAction(first.action.action_id, reviewerId, "approved", "approved");
+    await decideToolAction(ORG_DEFAULT, first.action.action_id, reviewerId, "approved", "approved");
 
-    const second = await requestToolAction(ticket, "start_refund_review", {
+    const second = await requestToolAction(ORG_DEFAULT, ticket, "start_refund_review", {
       order_id: "ord_5001",
       reason: "damaged",
       amount: 500,
@@ -368,16 +369,16 @@ describe("ToolActionService — one active action per ticket", () => {
 
   it("rejects a new request once another action for the ticket is executed", async () => {
     const ticket = await triagedTicket("tkt_9002", "shipping");
-    const first = await requestToolAction(ticket, "open_carrier_investigation", {
+    const first = await requestToolAction(ORG_DEFAULT, ticket, "open_carrier_investigation", {
       order_id: "ord_5002",
       tracking_number: "BLUETRK10002",
       reason: "stale tracking",
       idempotency_key: "tkt_9002-conflict-1",
     });
     if (first.kind !== "created") throw new Error("fixture setup failed");
-    await executeToolAction(first.action.action_id); // auto-approved, so this executes directly
+    await executeToolAction(ORG_DEFAULT, first.action.action_id); // auto-approved, so this executes directly
 
-    const second = await requestToolAction(ticket, "escalate_to_human", {
+    const second = await requestToolAction(ORG_DEFAULT, ticket, "escalate_to_human", {
       ticket_id: "tkt_9002",
       reason: "still stale",
       queue: "specialist",
@@ -388,13 +389,13 @@ describe("ToolActionService — one active action per ticket", () => {
 
   it("allows two actions to sit in approval_required simultaneously, but blocks approving the second", async () => {
     const ticket = await triagedTicket("tkt_9003", "refund");
-    const first = await requestToolAction(ticket, "create_replacement_order", {
+    const first = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5004",
       sku: "BG-SOFT-01",
       reason: "x",
       idempotency_key: "tkt_9003-conflict-1",
     });
-    const second = await requestToolAction(ticket, "start_refund_review", {
+    const second = await requestToolAction(ORG_DEFAULT, ticket, "start_refund_review", {
       order_id: "ord_5004",
       reason: "x",
       amount: 500,
@@ -402,25 +403,25 @@ describe("ToolActionService — one active action per ticket", () => {
     });
     if (first.kind !== "created" || second.kind !== "created") throw new Error("fixture setup failed");
 
-    const approveFirst = await decideToolAction(first.action.action_id, reviewerId, "ok", "approved");
+    const approveFirst = await decideToolAction(ORG_DEFAULT, first.action.action_id, reviewerId, "ok", "approved");
     expect(approveFirst.kind).toBe("ok");
 
-    const approveSecond = await decideToolAction(second.action.action_id, reviewerId, "ok", "approved");
+    const approveSecond = await decideToolAction(ORG_DEFAULT, second.action.action_id, reviewerId, "ok", "approved");
     expect(approveSecond.kind).toBe("ticket_locked");
   });
 
   it("does not count a rejected action as active — a new request/approve still works", async () => {
     const ticket = await triagedTicket("tkt_9004", "refund");
-    const first = await requestToolAction(ticket, "create_replacement_order", {
+    const first = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
       order_id: "ord_5005",
       sku: "BG-TAB-10",
       reason: "x",
       idempotency_key: "tkt_9004-conflict-1",
     });
     if (first.kind !== "created") throw new Error("fixture setup failed");
-    await decideToolAction(first.action.action_id, reviewerId, "no", "rejected");
+    await decideToolAction(ORG_DEFAULT, first.action.action_id, reviewerId, "no", "rejected");
 
-    const second = await requestToolAction(ticket, "start_refund_review", {
+    const second = await requestToolAction(ORG_DEFAULT, ticket, "start_refund_review", {
       order_id: "ord_5005",
       reason: "x",
       amount: 500,
@@ -428,24 +429,24 @@ describe("ToolActionService — one active action per ticket", () => {
     });
     expect(second.kind).toBe("created");
     if (second.kind === "created") {
-      const approved = await decideToolAction(second.action.action_id, reviewerId, "ok", "approved");
+      const approved = await decideToolAction(ORG_DEFAULT, second.action.action_id, reviewerId, "ok", "approved");
       expect(approved.kind).toBe("ok");
     }
   });
 
   it("does not let a conflict on one ticket affect another ticket", async () => {
     const ticketA = await triagedTicket("tkt_9001", "refund");
-    const actionA = await requestToolAction(ticketA, "create_replacement_order", {
+    const actionA = await requestToolAction(ORG_DEFAULT, ticketA, "create_replacement_order", {
       order_id: "ord_5001",
       sku: "BG-AIRPODS-01",
       reason: "x",
       idempotency_key: "tkt_9001-conflict-isolation",
     });
     if (actionA.kind !== "created") throw new Error("fixture setup failed");
-    await decideToolAction(actionA.action.action_id, reviewerId, "ok", "approved");
+    await decideToolAction(ORG_DEFAULT, actionA.action.action_id, reviewerId, "ok", "approved");
 
     const ticketB = await triagedTicket("tkt_9008", "billing");
-    const actionB = await requestToolAction(ticketB, "start_refund_review", {
+    const actionB = await requestToolAction(ORG_DEFAULT, ticketB, "start_refund_review", {
       order_id: "ord_5006",
       reason: "x",
       amount: 500,

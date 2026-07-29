@@ -17,4 +17,10 @@ export const newTicketId = () => `tkt_${nanoid()}`;
 export const newFeedbackId = () => `fbk_${nanoid()}`;
 // V2-4 (LLD_v2 §1/§5): ticket_messages row IDs.
 export const newMessageId = () => `msg_${nanoid()}`;
+// V2-5 (LLD_v2 §1/§6): org IDs. 'org_default' (the seed tenant) is the one
+// exception, created directly by the migration rather than through this.
+export const newOrgId = () => `org_${nanoid()}`;
+// V2-5 follow-up: POST /customers (see docs/PROGRESS.md — added so a freshly
+// onboarded org, which starts with zero seed customers, can create one).
+export const newCustomerId = () => `cus_${nanoid()}`;
 

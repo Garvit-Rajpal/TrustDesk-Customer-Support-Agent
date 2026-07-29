@@ -5,6 +5,7 @@ import { pool, truncateAll } from "../../src/db/pool.js";
 import { runSeed } from "../../src/db/seed.js";
 import { getTicketById } from "../../src/db/repos/ticketsRepo.js";
 import { getExpectedLabels } from "../../src/db/repos/expectedLabelsRepo.js";
+import { ORG_DEFAULT } from "../helpers/org.js";
 
 describe("seed loader integrity", () => {
   beforeEach(async () => {
@@ -61,14 +62,14 @@ describe("seed loader integrity", () => {
     );
     expect(adversarialRows).toHaveLength(1);
 
-    const ticket = await getTicketById("tkt_9001");
+    const ticket = await getTicketById(ORG_DEFAULT, "tkt_9001");
     expect(ticket?.ticket_id).toBe("tkt_9001");
   });
 
   it("keeps expected labels out of the runtime ticket row", async () => {
     await runSeed();
 
-    const ticket = await getTicketById("tkt_9001");
+    const ticket = await getTicketById(ORG_DEFAULT, "tkt_9001");
     expect(ticket).not.toHaveProperty("expected_category");
     expect(ticket).not.toHaveProperty("expected_actions");
 

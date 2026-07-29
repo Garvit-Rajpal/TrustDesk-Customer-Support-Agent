@@ -21,8 +21,10 @@ export const InviteUserRequest = z.object({
 export type InviteUserRequest = z.infer<typeof InviteUserRequest>;
 
 // JWT claims (LLD §4.1: HS256, 8h expiry, claims { sub, name, role }).
+// V2-5 (LLD_v2 §6): "JWT adds org_id; login response includes org."
 export interface TokenClaims {
   sub: string;
   name: string;
   role: string;
+  org_id: string;
 }

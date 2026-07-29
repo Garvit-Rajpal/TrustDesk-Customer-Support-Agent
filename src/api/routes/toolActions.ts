@@ -16,14 +16,15 @@ toolActionsRouter.post("/", requirePermission("tool_actions:request"), async (re
       return;
     }
     const { ticket_id, tool_name, payload } = parsed.data;
+    const ctx = req.orgContext!;
 
-    const ticket = await getTicketById(ticket_id);
+    const ticket = await getTicketById(ctx, ticket_id);
     if (!ticket) {
       sendError(res, "NOT_FOUND", `Ticket ${ticket_id} not found`);
       return;
     }
 
-    const outcome = await requestToolAction(ticket, tool_name, payload);
+    const outcome = await requestToolAction(ctx, ticket, tool_name, payload);
 
     if (outcome.kind === "invalid") {
       sendError(res, "VALIDATION_ERROR", outcome.message);
@@ -71,7 +72,7 @@ async function handleDecision(
   }
   const reviewerId = req.user!.sub;
 
-  const outcome = await decideToolAction(actionId, reviewerId, parsed.data.reason, decision);
+  const outcome = await decideToolAction(req.orgContext!, actionId, reviewerId, parsed.data.reason, decision);
 
   if (outcome.kind === "not_found") {
     sendError(res, "NOT_FOUND", `Tool action ${actionId} not found`);
@@ -95,7 +96,7 @@ async function handleDecision(
 // LLD §4.10: legal only from approved; re-executing an executed action replays.
 toolActionsRouter.post("/:id/execute", requirePermission("tool_actions:approve"), async (req, res, next) => {
   try {
-    const outcome = await executeToolAction(req.params.id);
+    const outcome = await executeToolAction(req.orgContext!, req.params.id);
 
     if (outcome.kind === "not_found") {
       sendError(res, "NOT_FOUND", `Tool action ${req.params.id} not found`);

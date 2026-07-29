@@ -9,7 +9,10 @@ import { buildEvalRunsRouter } from "./api/routes/evalRuns.js";
 import { usersRouter } from "./api/routes/users.js";
 import { draftsRouter } from "./api/routes/drafts.js";
 import { metricsRouter } from "./api/routes/metrics.js";
+import { orgsRouter } from "./api/routes/orgs.js";
+import { customersRouter } from "./api/routes/customers.js";
 import { authMiddleware } from "./api/middleware/auth.js";
+import { tenancyMiddleware } from "./api/middleware/tenancy.js";
 import { errorHandler } from "./api/middleware/errors.js";
 import type { ModelAdapter } from "./adapters/modelAdapter.js";
 import { MockModelAdapter } from "./adapters/mock.js";
@@ -26,15 +29,23 @@ export function buildApp(modelAdapter: ModelAdapter): Express {
   app.use(express.json());
   app.use("/auth", authRouter);
 
-  // ADR-4: every route below requires a valid JWT.
-  app.use("/tickets", authMiddleware, buildTicketsRouter(modelAdapter));
-  app.use("/documents", authMiddleware, documentsRouter);
-  app.use("/agent-runs", authMiddleware, agentRunsRouter);
-  app.use("/tool-actions", authMiddleware, toolActionsRouter);
-  app.use("/eval-runs", authMiddleware, buildEvalRunsRouter(modelAdapter));
-  app.use("/users", authMiddleware, usersRouter);
-  app.use("/drafts", authMiddleware, draftsRouter);
-  app.use("/metrics", authMiddleware, metricsRouter);
+  // ADR-4: every route below requires a valid JWT. V2-5: tenancyMiddleware
+  // runs right after auth on every one of them, so req.orgContext is always
+  // populated before a permission check or handler runs.
+  app.use("/tickets", authMiddleware, tenancyMiddleware, buildTicketsRouter(modelAdapter));
+  app.use("/documents", authMiddleware, tenancyMiddleware, documentsRouter);
+  app.use("/agent-runs", authMiddleware, tenancyMiddleware, agentRunsRouter);
+  app.use("/tool-actions", authMiddleware, tenancyMiddleware, toolActionsRouter);
+  app.use("/eval-runs", authMiddleware, tenancyMiddleware, buildEvalRunsRouter(modelAdapter));
+  app.use("/users", authMiddleware, tenancyMiddleware, usersRouter);
+  app.use("/drafts", authMiddleware, tenancyMiddleware, draftsRouter);
+  app.use("/metrics", authMiddleware, tenancyMiddleware, metricsRouter);
+  app.use("/customers", authMiddleware, tenancyMiddleware, customersRouter);
+  // POST /orgs creates a NEW tenant — it doesn't read/write the caller's own
+  // org's data, but tenancyMiddleware is harmless to include here too (its
+  // req.orgContext is simply unused by the handler) and keeps every
+  // authenticated route uniform.
+  app.use("/orgs", authMiddleware, tenancyMiddleware, orgsRouter);
 
   app.use(errorHandler);
 

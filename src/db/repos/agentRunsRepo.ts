@@ -1,6 +1,7 @@
 import { pool } from "../pool.js";
 import type { GuardrailResult, RunStatus, RunType } from "../../domain/schemas.js";
 import type { CategorizedAgentRun } from "../../services/qualityMetrics.js";
+import type { OrgContext } from "../../domain/orgContext.js";
 
 export interface NewAgentRun {
   run_id: string;
@@ -18,12 +19,12 @@ export interface NewAgentRun {
 
 // ADR-6: every AI run writes this row synchronously, before the API
 // responds — never as an end-of-flow audit step.
-export async function insertAgentRun(run: NewAgentRun): Promise<void> {
+export async function insertAgentRun(ctx: OrgContext, run: NewAgentRun): Promise<void> {
   await pool.query(
     `INSERT INTO agent_runs
        (run_id, ticket_id, run_type, status, retrieved_doc_ids, tool_calls,
-        guardrail_results, rejected_output, model_provider, model_name, latency_ms)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        guardrail_results, rejected_output, model_provider, model_name, latency_ms, org_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
       run.run_id,
       run.ticket_id,
@@ -36,6 +37,7 @@ export async function insertAgentRun(run: NewAgentRun): Promise<void> {
       run.model_provider ?? null,
       run.model_name ?? null,
       run.latency_ms ?? null,
+      ctx.org_id,
     ]
   );
 }
@@ -58,23 +60,24 @@ export interface AgentRunRow {
 // V2-3 (LLD_v2 §4): draft_reply runs only (guardrail_block_rate is about
 // draft output scans — triage runs can never reach "guardrail_blocked",
 // see src/services/triage.ts) joined out to the ticket's triage category.
-export async function getCategorizedDraftRuns(): Promise<CategorizedAgentRun[]> {
-  const { rows } = await pool.query(`
-    SELECT t.triage->>'category' AS category, ar.status
-    FROM agent_runs ar
-    JOIN tickets t ON ar.ticket_id = t.ticket_id
-    WHERE ar.run_type = 'draft_reply' AND t.triage IS NOT NULL
-  `);
+export async function getCategorizedDraftRuns(ctx: OrgContext): Promise<CategorizedAgentRun[]> {
+  const { rows } = await pool.query(
+    `SELECT t.triage->>'category' AS category, ar.status
+     FROM agent_runs ar
+     JOIN tickets t ON ar.ticket_id = t.ticket_id
+     WHERE ar.run_type = 'draft_reply' AND t.triage IS NOT NULL AND ar.org_id = $1`,
+    [ctx.org_id]
+  );
   return rows;
 }
 
-export async function getAgentRunById(runId: string): Promise<AgentRunRow | null> {
+export async function getAgentRunById(ctx: OrgContext, runId: string): Promise<AgentRunRow | null> {
   const { rows } = await pool.query(
     `SELECT run_id, ticket_id, run_type, status, retrieved_doc_ids, tool_calls,
             guardrail_results, rejected_output, model_provider, model_name,
             latency_ms, created_at::text
-     FROM agent_runs WHERE run_id = $1`,
-    [runId]
+     FROM agent_runs WHERE run_id = $1 AND org_id = $2`,
+    [runId, ctx.org_id]
   );
   return rows[0] ?? null;
 }

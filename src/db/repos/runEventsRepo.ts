@@ -10,7 +10,12 @@ export interface NewRunEvent {
 
 // V2-1 (LLD_v2 §2): persisted per-stage, synchronously — SSE replay for
 // historical runs reads straight from this table (ADR-8: "live and post-hoc
-// views share one component").
+// views share one component"). Not in LLD_v2 §1's org-scoped table list and
+// has no org_id column: the SSE route (tickets.ts) already resolves the
+// ticket and (if the run has finished) the agent_runs row through
+// org-scoped repos and 404s on any mismatch before ever reaching run_id —
+// run_id itself is an unguessable nanoid, so this table is safe to key
+// purely by run_id.
 export async function insertRunEvent(event: NewRunEvent): Promise<void> {
   await pool.query(
     `INSERT INTO run_events (run_id, stage, status, summary) VALUES ($1, $2, $3, $4)`,

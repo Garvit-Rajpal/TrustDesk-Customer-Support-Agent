@@ -13,7 +13,7 @@ export const agentRunsRouter = Router();
 // draft the model actually produced.
 agentRunsRouter.get("/:runId", requirePermission("runs:view"), async (req, res, next) => {
   try {
-    const run = await getAgentRunById(req.params.runId);
+    const run = await getAgentRunById(req.orgContext!, req.params.runId);
     if (!run) {
       sendError(res, "NOT_FOUND", `Agent run ${req.params.runId} not found`);
       return;

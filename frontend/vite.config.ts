@@ -16,6 +16,8 @@ export default defineConfig({
       "/users": "http://localhost:3000",
       "/drafts": "http://localhost:3000",
       "/metrics": "http://localhost:3000",
+      "/orgs": "http://localhost:3000",
+      "/customers": "http://localhost:3000",
     },
   },
 });

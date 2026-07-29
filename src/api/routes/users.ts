@@ -8,10 +8,8 @@ import { requirePermission } from "../middleware/permissions.js";
 
 export const usersRouter = Router();
 
-// V2-2 (LLD_v2 §3/§9, ADR-9): admin-only account creation. "org" scoping
-// (LLD_v2 §5: invited user lands in the inviter's org) is a no-op until
-// V2-5 adds orgs — there is exactly one implicit tenant today, the same one
-// every v1 seed user already belongs to.
+// V2-2/V2-5 (LLD_v2 §3/§6/§9, ADR-9): admin-only account creation. Invited
+// user lands in the inviter's org (req.orgContext, from their JWT).
 usersRouter.post("/invite", requirePermission("users:invite"), async (req, res, next) => {
   try {
     const parsed = InviteUserRequest.safeParse(req.body);
@@ -29,7 +27,7 @@ usersRouter.post("/invite", requirePermission("users:invite"), async (req, res, 
 
     const user_id = newUserId();
     const password_hash = await bcrypt.hash(password, 10);
-    await insertUser({ user_id, username, password_hash, display_name, role });
+    await insertUser(req.orgContext!, { user_id, username, password_hash, display_name, role });
 
     res.status(201).json({ data: { user_id, username, display_name, role } });
   } catch (err) {

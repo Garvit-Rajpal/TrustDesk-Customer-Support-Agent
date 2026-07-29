@@ -1,7 +1,20 @@
 // Entity-shaped zod schemas for seed data and repositories (LLD §2 DDL / §3).
 // These validate the raw seed JSON at load time and give repos typed rows.
 import { z } from "zod";
-import { Category, MessageDirection, Priority, Sentiment, TicketStatus } from "./schemas.js";
+import { Category, MessageDirection, Priority, Sentiment, TicketStatus, Vertical } from "./schemas.js";
+
+// V2-5 (LLD_v2 §1/§6): a tenant. org_id is 'org_' + nanoid, except the
+// seed tenant 'org_default' (unprefixed, matches every v1 fixture ID).
+export const Org = z.object({
+  org_id: z.string(),
+  name: z.string(),
+  // Human-readable, unique, name-derived identifier — used to prefix a
+  // stamped policy pack's doc IDs instead of the opaque org_id nanoid.
+  slug: z.string(),
+  vertical: Vertical,
+  created_at: z.string(),
+});
+export type Org = z.infer<typeof Org>;
 
 export const Customer = z.object({
   customer_id: z.string(),
@@ -103,7 +116,14 @@ export const KbDocumentInput = z.object({
   doc_id: z.string(),
   title: z.string(),
   content: z.string(),
-  source_path: z.string(),
+  // Provenance/audit metadata only — never read from disk at request time
+  // (the full document content is always stored in and served from
+  // kb_documents.content). Optional because it only means something for
+  // docs that genuinely originated from a file on disk (seed data, policy
+  // packs); a document ingested by hand through the UI has no such path,
+  // so POST /documents/ingest fills in a synthetic one when omitted rather
+  // than making the caller invent a fake filesystem path.
+  source_path: z.string().optional(),
   version: z.string().optional().default("unversioned"),
   audience: z.string().optional().default("Customer support agents"),
 });

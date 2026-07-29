@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import { LoginRequest } from "../../domain/authTypes.js";
 import { getUserByUsername } from "../../db/repos/usersRepo.js";
+import { getOrgById } from "../../db/repos/orgsRepo.js";
 import { signToken } from "../../services/tokens.js";
 import { sendError } from "../errorEnvelope.js";
 
@@ -29,14 +30,25 @@ authRouter.post("/login", async (req, res, next) => {
       return;
     }
 
-    const token = signToken({ sub: user.user_id, name: user.display_name, role: user.role });
+    const token = signToken({
+      sub: user.user_id,
+      name: user.display_name,
+      role: user.role,
+      org_id: user.org_id,
+    });
+    // V2-5 (LLD_v2 §6): "login response includes org" — the frontend topbar
+    // needs the org's *name*, not just its id, so this fetches the row
+    // rather than only echoing back user.org_id. user.org_id is a FK, so
+    // this can never come back null for a real user.
+    const org = await getOrgById(user.org_id);
     res.status(200).json({
       data: {
         // V2-2 (LLD_v2 §3): role rides along so the frontend can gate UI
         // (hide approve/execute, ingest, invite, etc.) without a second
         // round trip — it's already in the JWT, this just surfaces it.
         token,
-        user: { user_id: user.user_id, display_name: user.display_name, role: user.role },
+        user: { user_id: user.user_id, display_name: user.display_name, role: user.role, org_id: user.org_id },
+        org: { org_id: org!.org_id, name: org!.name, slug: org!.slug },
       },
     });
   } catch (err) {

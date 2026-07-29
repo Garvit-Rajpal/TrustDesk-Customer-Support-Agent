@@ -11,13 +11,14 @@ import { getOrderById } from "../../src/db/repos/ordersRepo.js";
 import { getAgentRunById } from "../../src/db/repos/agentRunsRepo.js";
 import { ESCALATION_TEMPLATE_BODY } from "../../src/services/guardrails/templates/escalation.js";
 import type { TriageResult } from "../../src/domain/schemas.js";
+import { ORG_DEFAULT } from "../helpers/org.js";
 
 async function triageAndLoad(ticketId: string, triage: TriageResult) {
-  await updateTicketTriage(ticketId, triage);
-  const ticket = await getTicketById(ticketId);
+  await updateTicketTriage(ORG_DEFAULT, ticketId, triage);
+  const ticket = await getTicketById(ORG_DEFAULT, ticketId);
   if (!ticket) throw new Error(`fixture ticket ${ticketId} missing`);
-  const customer = await getCustomerById(ticket.customer_id);
-  const order = ticket.order_id ? await getOrderById(ticket.order_id) : null;
+  const customer = await getCustomerById(ORG_DEFAULT, ticket.customer_id);
+  const order = ticket.order_id ? await getOrderById(ORG_DEFAULT, ticket.order_id) : null;
   return { ticket, customer: customer!, order };
 }
 
@@ -59,7 +60,7 @@ describe("draft flow", () => {
       },
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.resolutionType).toBe("answered");
     expect(outcome.citations).toEqual(["KB-REFUND-001"]);
@@ -67,7 +68,7 @@ describe("draft flow", () => {
       { tool_name: "create_replacement_order", requires_human_approval: true, reason: "damaged on arrival" },
     ]);
 
-    const run = await getAgentRunById(outcome.runId);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     expect(run?.run_type).toBe("draft_reply");
     expect(run?.status).toBe("completed");
     expect((run?.retrieved_doc_ids as string[]).length).toBeGreaterThan(0);
@@ -91,7 +92,7 @@ describe("draft flow", () => {
       },
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.resolutionType).toBe("refused_by_policy");
     expect(outcome.citations).toEqual(["KB-REFUND-001"]);
@@ -116,7 +117,7 @@ describe("draft flow", () => {
       },
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.resolutionType).toBe("escalated");
     expect(outcome.recommendedActions).toEqual([]);
@@ -140,14 +141,14 @@ describe("draft flow", () => {
       },
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.resolutionType).toBe("escalated");
     expect(outcome.body).toBe(ESCALATION_TEMPLATE_BODY);
     expect(outcome.citations).toEqual([]);
     expect(outcome.recommendedActions).toEqual([]);
 
-    const run = await getAgentRunById(outcome.runId);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     expect(run?.status).toBe("guardrail_blocked");
     expect(run?.rejected_output).toBeTruthy();
   });
@@ -170,12 +171,12 @@ describe("draft flow", () => {
       },
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.resolutionType).toBe("escalated");
     expect(outcome.body).toBe(ESCALATION_TEMPLATE_BODY);
 
-    const run = await getAgentRunById(outcome.runId);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     expect(run?.status).toBe("guardrail_blocked");
   });
 
@@ -198,12 +199,12 @@ describe("draft flow", () => {
       },
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.resolutionType).toBe("answered"); // draft kept
     expect(outcome.recommendedActions).toEqual([]); // action stripped
 
-    const run = await getAgentRunById(outcome.runId);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     expect(run?.status).toBe("completed");
   });
 
@@ -226,7 +227,7 @@ describe("draft flow", () => {
       },
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
     expect(outcome.recommendedActions).toEqual([
       { tool_name: "open_carrier_investigation", requires_human_approval: false, reason: "stale tracking" },
     ]);
@@ -244,13 +245,13 @@ describe("draft flow", () => {
       "tkt_9001:draft": [{ content: "not json" }, { content: "still not json" }],
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
 
     expect(outcome.resolutionType).toBe("escalated");
     expect(outcome.body).toBe(ESCALATION_TEMPLATE_BODY);
     expect(adapter.callCount("tkt_9001:draft")).toBe(2);
 
-    const run = await getAgentRunById(outcome.runId);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     expect(run?.status).toBe("guardrail_blocked");
   });
 
@@ -272,7 +273,7 @@ describe("draft flow", () => {
       },
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
     const { rows } = await pool.query(`SELECT * FROM drafts WHERE draft_id = $1`, [outcome.draftId]);
     expect(rows).toHaveLength(1);
     expect(rows[0].ticket_id).toBe("tkt_9001");
@@ -298,8 +299,8 @@ describe("draft flow", () => {
       },
     });
 
-    const outcome = await generateDraft(adapter, ticket, customer, order);
-    const run = await getAgentRunById(outcome.runId);
+    const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
+    const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
     expect(run?.guardrail_results).toHaveLength(9);
     expect((run?.guardrail_results as Array<{ passed: boolean }>).every((r) => r.passed)).toBe(true);
   });

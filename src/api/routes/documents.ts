@@ -19,7 +19,12 @@ documentsRouter.post("/ingest", requirePermission("documents:ingest"), async (re
     let ingested = 0;
     const document_ids: string[] = [];
     for (const doc of parsed.data.documents) {
-      const wrote = await upsertKbDocument(doc);
+      // source_path is provenance metadata, not a real filesystem location
+      // the app ever reads from (see KbDocumentInput) — a doc ingested
+      // through the UI/API without one gets a synthetic label instead of
+      // requiring the caller to invent a fake path.
+      const source_path = doc.source_path ?? `manual-ingest/${doc.doc_id}`;
+      const wrote = await upsertKbDocument({ ...doc, source_path }, req.orgContext!.org_id);
       if (wrote) ingested += 1;
       document_ids.push(doc.doc_id);
     }
@@ -40,16 +45,16 @@ documentsRouter.get("/search", requirePermission("documents:view"), async (req, 
     }
     const category = typeof req.query.category === "string" ? req.query.category : undefined;
 
-    const results = await searchDocuments(q, category);
+    const results = await searchDocuments(req.orgContext!, q, category);
     res.status(200).json({ data: { query: q, results } });
   } catch (err) {
     next(err);
   }
 });
 
-documentsRouter.get("/", requirePermission("documents:view"), async (_req, res, next) => {
+documentsRouter.get("/", requirePermission("documents:view"), async (req, res, next) => {
   try {
-    const documents = await listKbDocuments();
+    const documents = await listKbDocuments(req.orgContext!);
     res.status(200).json({ data: { documents } });
   } catch (err) {
     next(err);
@@ -58,7 +63,7 @@ documentsRouter.get("/", requirePermission("documents:view"), async (_req, res, 
 
 documentsRouter.get("/:docId", requirePermission("documents:view"), async (req, res, next) => {
   try {
-    const doc = await getKbDocumentById(req.params.docId);
+    const doc = await getKbDocumentById(req.orgContext!, req.params.docId);
     if (!doc) {
       sendError(res, "NOT_FOUND", `Document ${req.params.docId} not found`);
       return;
