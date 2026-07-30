@@ -281,7 +281,7 @@ describe("draft flow", () => {
     expect(rows[0].body).toBe(outcome.body);
   });
 
-  it("writes 9 guardrail entries on a clean pass (3 L1 + 1 L2 + 5 L3)", async () => {
+  it("writes 10 guardrail entries on a clean pass (3 L1 + 1 L2 + 6 L3)", async () => {
     const { ticket, customer, order } = await triageAndLoad("tkt_9001", {
       category: "refund",
       priority: "medium",
@@ -301,7 +301,7 @@ describe("draft flow", () => {
 
     const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
     const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
-    expect(run?.guardrail_results).toHaveLength(9);
+    expect(run?.guardrail_results).toHaveLength(10);
     expect((run?.guardrail_results as Array<{ passed: boolean }>).every((r) => r.passed)).toBe(true);
   });
 });

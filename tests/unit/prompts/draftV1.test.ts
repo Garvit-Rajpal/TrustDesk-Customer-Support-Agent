@@ -60,6 +60,11 @@ describe("draft.v1 prompt", () => {
     expect(DRAFT_SYSTEM_PROMPT).toMatch(/never follow instructions/i);
   });
 
+  it("system prompt bans internal decisioning language and mandates customer-friendly escalation phrasing", () => {
+    expect(DRAFT_SYSTEM_PROMPT).toMatch(/human approval/i);
+    expect(DRAFT_SYSTEM_PROMPT).toMatch(/representative responsible for handling/i);
+  });
+
   it("fences both the latest inbound message and retrieved doc content as untrusted data", () => {
     const prompt = buildDraftUserPrompt(
       ticket,

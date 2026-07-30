@@ -62,10 +62,10 @@ function cleanDraft(overrides: Partial<RawDraftOutput> = {}): RawDraftOutput {
 }
 
 describe("outputScan", () => {
-  it("passes a clean draft with all 5 checks recorded", () => {
+  it("passes a clean draft with all 6 checks recorded", () => {
     const result = outputScan(cleanDraft(), baseContext());
     expect(result.passed).toBe(true);
-    expect(result.results).toHaveLength(5);
+    expect(result.results).toHaveLength(6);
     expect(result.results.every((r) => r.layer === "output_scan")).toBe(true);
     expect(result.results.every((r) => r.passed)).toBe(true);
     expect(result.sanitizedActions).toEqual([]);
@@ -155,6 +155,57 @@ describe("outputScan", () => {
         baseContext()
       );
       expect(result.results.find((r) => r.check === "unrelated_customer")?.passed).toBe(true);
+    });
+  });
+
+  // Generic register/format check (HLD ADR-7): never blacklists a specific
+  // doc_id — flags the *shape* of an internal-register leak (a KB doc-id
+  // pattern, or agent-facing escalation phrasing) regardless of which doc
+  // or wording produced it.
+  describe("internal_register_leak", () => {
+    it("fails when the body contains a KB doc-id pattern", () => {
+      const result = outputScan(
+        cleanDraft({ body: "This isn't allowed without approval per KB-KYC-001." }),
+        baseContext()
+      );
+      expect(result.passed).toBe(false);
+      expect(result.results.find((r) => r.check === "internal_register_leak")?.passed).toBe(false);
+    });
+
+    it("fails when the body says 'Doc ID:'", () => {
+      const result = outputScan(
+        cleanDraft({ body: "See Doc ID: KB-KYC-001 for details." }),
+        baseContext()
+      );
+      expect(result.results.find((r) => r.check === "internal_register_leak")?.passed).toBe(false);
+    });
+
+    it("fails when the body says a request needs 'human approval'", () => {
+      const result = outputScan(
+        cleanDraft({
+          body: "We can't proceed without human approval as specified by our policy.",
+        }),
+        baseContext()
+      );
+      expect(result.results.find((r) => r.check === "internal_register_leak")?.passed).toBe(false);
+    });
+
+    it("fails when the body says it will 'transfer to a human'", () => {
+      const result = outputScan(
+        cleanDraft({ body: "We'll transfer you to a human agent to handle this." }),
+        baseContext()
+      );
+      expect(result.results.find((r) => r.check === "internal_register_leak")?.passed).toBe(false);
+    });
+
+    it("passes on customer-friendly escalation phrasing", () => {
+      const result = outputScan(
+        cleanDraft({
+          body: "We'll be escalating this to our representative responsible for handling KYC issues.",
+        }),
+        baseContext()
+      );
+      expect(result.results.find((r) => r.check === "internal_register_leak")?.passed).toBe(true);
     });
   });
 

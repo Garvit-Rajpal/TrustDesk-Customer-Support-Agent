@@ -23,7 +23,7 @@ const VALID_TRIAGE = JSON.stringify({
 });
 
 const VALID_DRAFT = JSON.stringify({
-  body: "Thanks for reaching out — since this arrived damaged within the return window, we can send a replacement. See KB-REFUND-001 for the policy.",
+  body: "Thanks for reaching out — since this arrived damaged within the return window, we can send a replacement under our return policy.",
   citations: ["KB-REFUND-001"],
   resolution_type: "answered",
   recommended_actions: [],

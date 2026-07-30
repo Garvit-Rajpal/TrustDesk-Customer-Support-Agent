@@ -12,6 +12,7 @@ describe("platform support (V3-6)", () => {
   let defaultAdminToken: string;
   let defaultAgentToken: string;
   let softwareOrgId: string;
+  let softwareOrgSlug: string;
   let softwareAdminToken: string;
   let softwareTicketId: string;
 
@@ -40,6 +41,7 @@ describe("platform support (V3-6)", () => {
         admin_display_name: "Acme Admin",
       });
     softwareOrgId = createOrg.body.data.org.org_id;
+    softwareOrgSlug = createOrg.body.data.org.slug;
 
     const softwareLogin = await request(app)
       .post("/auth/login")
@@ -104,6 +106,15 @@ describe("platform support (V3-6)", () => {
       const res = await request(app)
         .get("/platform/tickets")
         .query({ target_org_id: softwareOrgId })
+        .set("Authorization", `Bearer ${defaultAgentToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.tickets.map((t: { ticket_id: string }) => t.ticket_id)).toContain(softwareTicketId);
+    });
+
+    it("also resolves the target by slug, case-insensitively", async () => {
+      const res = await request(app)
+        .get("/platform/tickets")
+        .query({ target_org_id: softwareOrgSlug.toLowerCase() })
         .set("Authorization", `Bearer ${defaultAgentToken}`);
       expect(res.status).toBe(200);
       expect(res.body.data.tickets.map((t: { ticket_id: string }) => t.ticket_id)).toContain(softwareTicketId);

@@ -55,6 +55,19 @@ export async function slugExists(slug: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+// Unlike name, slug carries a DB UNIQUE constraint (orgs_slug_unique) — safe
+// to resolve unambiguously. Lookup is case-insensitive since slugs are
+// conventionally upper-kebab-case and operators may type them either way.
+export async function getOrgBySlug(slug: string): Promise<Org | null> {
+  const { rows } = await pool.query(
+    `SELECT org_id, name, slug, vertical, allow_platform_support, allow_platform_metrics, created_at::text
+     FROM orgs WHERE slug = $1`,
+    [slug.toUpperCase()]
+  );
+  if (rows.length === 0) return null;
+  return Org.parse(rows[0]);
+}
+
 // V3-6 (LLD_v3 §4, HLD_v3 ADR-16): both fields optional/independently
 // settable — COALESCE leaves an omitted flag untouched rather than
 // resetting it to its column default.

@@ -29,7 +29,13 @@ export interface OutputScanResult {
   sanitizedActions: RawDraftOutput["recommended_actions"];
 }
 
-const FAIL_CLOSED_CHECKS = new Set(["citation_subset", "internal_leak", "secret_leak", "unrelated_customer"]);
+const FAIL_CLOSED_CHECKS = new Set([
+  "citation_subset",
+  "internal_leak",
+  "secret_leak",
+  "unrelated_customer",
+  "internal_register_leak",
+]);
 
 function tokenize(text: string): string[] {
   return text
@@ -69,6 +75,17 @@ const SECRET_PATTERNS: RegExp[] = [
 const EMAIL_PATTERN = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const CUSTOMER_ID_PATTERN = /\bcus_[a-z0-9]+\b/gi;
 
+// Generic internal-register patterns (HLD ADR-7: never a specific doc_id
+// blacklist — the *shape* of a KB doc-id, or agent-facing escalation
+// phrasing, regardless of which document or wording produced it).
+const INTERNAL_REGISTER_PATTERNS: RegExp[] = [
+  /\bKB-[A-Z0-9]+-\d+\b/i, // any KB doc-id, e.g. KB-KYC-001
+  /\bdoc\s*id\s*:/i, // "Doc ID:" header leak
+  /\bhuman approval\b/i, // internal decisioning language, not customer-facing
+  /\btransfer(?:ring)?\s+(?:you\s+)?to\s+a\s+human\b/i,
+  /\ba human (?:specialist|reviewer|agent)\b/i,
+];
+
 function checkCitationSubset(draft: RawDraftOutput, ctx: OutputScanContext): GuardrailResult {
   const unknown = draft.citations.filter((c) => !ctx.retrievedDocIds.includes(c));
   return GuardrailResult.parse({
@@ -102,6 +119,16 @@ function checkSecretLeak(draft: RawDraftOutput): GuardrailResult {
     check: "secret_leak",
     passed: !matched,
     detail: matched ? "body matches a secret/key-format pattern" : undefined,
+  });
+}
+
+function checkInternalRegisterLeak(draft: RawDraftOutput): GuardrailResult {
+  const matched = INTERNAL_REGISTER_PATTERNS.find((p) => p.test(draft.body));
+  return GuardrailResult.parse({
+    layer: "output_scan",
+    check: "internal_register_leak",
+    passed: !matched,
+    detail: matched ? `body matches an internal-register pattern (${matched})` : undefined,
   });
 }
 
@@ -165,6 +192,7 @@ export function outputScan(draft: RawDraftOutput, ctx: OutputScanContext): Outpu
   const citationResult = checkCitationSubset(draft, ctx);
   const internalLeakResult = checkInternalLeak(draft, ctx);
   const secretLeakResult = checkSecretLeak(draft);
+  const internalRegisterLeakResult = checkInternalRegisterLeak(draft);
   const unrelatedCustomerResult = checkUnrelatedCustomer(draft, ctx);
   const { result: actionValidityResult, sanitizedActions } = checkActionValidity(draft, ctx);
 
@@ -172,6 +200,7 @@ export function outputScan(draft: RawDraftOutput, ctx: OutputScanContext): Outpu
     citationResult,
     internalLeakResult,
     secretLeakResult,
+    internalRegisterLeakResult,
     unrelatedCustomerResult,
     actionValidityResult,
   ];

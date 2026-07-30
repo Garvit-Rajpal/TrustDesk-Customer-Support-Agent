@@ -14,8 +14,9 @@ const COLUMNS: DataTableColumn<TicketSummary>[] = [
 // V3-6/V3-9 (LLD_v3 §4/§6, HLD_v3 ADR-16): read-only cross-org view for
 // org_default agents — never merged into org_default's own queue (resolved
 // decision #3). Since there's no "list orgs" endpoint, the operator enters a
-// target org_id directly (visible on that org's own Admin/onboarding
-// screen) — consent/404/403 all surface as a plain error string.
+// target org_id or slug directly (both visible on that org's own
+// Admin/onboarding screen) — consent/404/403 all surface as a plain error
+// string. Name is not accepted: orgs.name has no unique constraint.
 export function PlatformSupport() {
   const [targetOrgId, setTargetOrgId] = useState("");
   const [tickets, setTickets] = useState<TicketSummary[] | null>(null);
@@ -71,7 +72,7 @@ export function PlatformSupport() {
         <input
           value={targetOrgId}
           onChange={(e) => setTargetOrgId(e.target.value)}
-          placeholder="Target org_id (e.g. org_abc123)"
+          placeholder="Target org_id or slug (e.g. org_abc123 or ACME-SOFTWARE)"
           className="flex-1 rounded-ds-md border border-ds-border px-3 py-2 text-sm"
         />
         <button disabled={busy || !targetOrgId.trim()} type="submit">

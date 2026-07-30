@@ -6,7 +6,7 @@
 // tool-action routes exist here: platform support is view-only.
 import { Router } from "express";
 import type { OrgContext } from "../../domain/orgContext.js";
-import { getOrgById } from "../../db/repos/orgsRepo.js";
+import { getOrgById, getOrgBySlug } from "../../db/repos/orgsRepo.js";
 import { getTicketById, listTickets } from "../../db/repos/ticketsRepo.js";
 import { listMessagesByTicketId } from "../../db/repos/ticketMessagesRepo.js";
 import { getCategorizedFeedback } from "../../db/repos/feedbackRepo.js";
@@ -31,6 +31,9 @@ type ConsentField = "allow_platform_support" | "allow_platform_metrics";
 // check) stays meaningful for these routes.
 type ResolveResult = { ctx: OrgContext } | { errorCode: ErrorCode; message: string };
 
+// target_org_id may be either the org's opaque id or its (unique) slug —
+// name is deliberately not accepted here since orgs.name has no unique
+// constraint (see orgOnboarding.ts) and would resolve ambiguously.
 async function resolveConsentingTarget(
   targetOrgId: string | undefined,
   consentField: ConsentField
@@ -38,11 +41,11 @@ async function resolveConsentingTarget(
   if (!targetOrgId) {
     return { errorCode: "VALIDATION_ERROR", message: "target_org_id query param is required" };
   }
-  const targetOrg = await getOrgById(targetOrgId);
+  const targetOrg = (await getOrgById(targetOrgId)) ?? (await getOrgBySlug(targetOrgId));
   if (!targetOrg || !targetOrg[consentField]) {
     return { errorCode: "FORBIDDEN", message: "Target org has not consented to this platform view" };
   }
-  return { ctx: { org_id: targetOrgId } };
+  return { ctx: { org_id: targetOrg.org_id } };
 }
 
 async function resolveOrFail(

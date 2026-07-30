@@ -273,7 +273,20 @@ Req `{ username, password }` → 200 `{ data: { token, user: { user_id, display_
 Req `{ documents: [{ doc_id, title, content, source_path, version?, audience? }] }`. Upsert by `doc_id` when checksum differs. → `{ data: { ingested, document_ids } }`.
 
 ### 4.3 `GET /documents/search?q=&category=`
-FTS via `websearch_to_tsquery`, `ts_rank` ordering, top 5. Optional category boost term. → `{ data: { query, results: [{ doc_id, title, snippet, score, audience }] } }`.
+FTS via `websearch_to_tsquery`, `ts_rank` ordering, top 5. → `{ data: { query, results: [{ doc_id, title, snippet, score, audience }] } }`.
+
+Candidate set (the `WHERE`) is matched on `q` alone, scoped to the caller's `org_id` — `category` is never ANDed into the same `tsquery`, because `websearch_to_tsquery` ANDs bare words together and folding the category in would silently exclude docs whose content doesn't literally contain that word (the opposite of a boost). So category never filters a document out of contention.
+
+Ranking (the `ORDER BY`) is:
+
+```
+score = ts_rank(tsv, websearch_to_tsquery(q))
+      + (category given ? 0.2 * ts_rank(tsv, plainto_tsquery(category)) : 0)
+```
+
+`ts_rank` is not normalized to sum to 1, so the `0.2` factor is a fixed-size additive bonus, not a percentage split of a fixed total (i.e. this is **not** "20% category weight / 80% query weight"). The query-match term dominates in practice; the category term only nudges ordering among docs that are already close on query relevance — it can't lift a query-irrelevant doc above a query-relevant one.
+
+Draft generation (`POST /tickets/:id/draft-reply`, §4.7) calls this same retrieval with the query built from the ticket's subject + body (via `buildBroadQueryText`, an OR-query so ranking rather than membership does the filtering) and `category` set to the ticket's triaged category. The top 5 results by the score above are what get passed into the draft prompt's `RETRIEVED POLICY DOCUMENTS` block for the model to reason over.
 
 ### 4.4 `GET /tickets?status=&category=` · `GET /tickets/:id`
 List returns ticket summaries + triage-if-present. Fetch returns `{ ticket, customer, order }`. Expected labels **never** appear in these responses (separate table, no join).
