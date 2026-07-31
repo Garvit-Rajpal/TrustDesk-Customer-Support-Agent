@@ -27,6 +27,14 @@ export default defineConfig({
       },
       "/platform": "http://localhost:3000",
       "/dashboard": "http://localhost:3000",
+      // W17 (LLD_v4 §7): public customer-ownership verification.
+      "/customer-auth": "http://localhost:3000",
+      // W17: the customer-chat WS transport — ws: true so Vite proxies the
+      // upgrade request too, not just a plain HTTP one.
+      "/customer-chat": {
+        target: "http://localhost:3000",
+        ws: true,
+      },
     },
   },
 });

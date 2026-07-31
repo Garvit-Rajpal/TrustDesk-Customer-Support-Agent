@@ -281,7 +281,11 @@ describe("draft flow", () => {
     expect(rows[0].body).toBe(outcome.body);
   });
 
-  it("writes 10 guardrail entries on a clean pass (3 L1 + 1 L2 + 6 L3)", async () => {
+  // V4-16: org_default's vertical (retail_ecommerce) always contributes its
+  // 2 org_policy rules alongside the 6 L3 checks (no judgeModelAdapter is
+  // passed here, so the semantic judge layer is skipped, same as every
+  // other direct generateDraft() call in this file).
+  it("writes 12 guardrail entries on a clean pass (3 L1 + 1 L2 + 6 L3 + 2 org_policy)", async () => {
     const { ticket, customer, order } = await triageAndLoad("tkt_9001", {
       category: "refund",
       priority: "medium",
@@ -301,7 +305,7 @@ describe("draft flow", () => {
 
     const outcome = await generateDraft(ORG_DEFAULT, adapter, ticket, customer, order);
     const run = await getAgentRunById(ORG_DEFAULT, outcome.runId);
-    expect(run?.guardrail_results).toHaveLength(10);
+    expect(run?.guardrail_results).toHaveLength(12);
     expect((run?.guardrail_results as Array<{ passed: boolean }>).every((r) => r.passed)).toBe(true);
   });
 });

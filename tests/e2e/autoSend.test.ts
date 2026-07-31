@@ -102,6 +102,10 @@ describe("auto-send eligibility (V3-5)", () => {
             recommended_actions: [],
           }),
         },
+        // V4-15: tickets.ts passes the same adapter as judgeModelAdapter,
+        // so a custom adapter (not DEFAULT_MODEL_SCENARIOS) needs its own
+        // wildcard too.
+        "*:judge": { content: JSON.stringify({ passed: true, reason: "fine" }) },
       });
       const testApp = buildApp(adapter);
       const created = await request(testApp)
@@ -144,6 +148,7 @@ describe("auto-send eligibility (V3-5)", () => {
             recommended_actions: [],
           }),
         },
+        "*:judge": { content: JSON.stringify({ passed: true, reason: "fine" }) },
       });
       const testApp = buildApp(adapter);
       const created = await request(testApp)

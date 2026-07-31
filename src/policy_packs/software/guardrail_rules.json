@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "check": "no_source_code_disclosure",
+      "pattern": "\\b(our source code|internal repository|internal repo|github\\.com/[a-z0-9_-]+/[a-z0-9_-]+)\\b",
+      "layer": "org_policy"
+    },
+    {
+      "check": "no_unbacked_uptime_commitment",
+      "pattern": "\\b(99\\.\\d+%|100%)\\s*(uptime|SLA)\\b",
+      "layer": "org_policy"
+    }
+  ]
+}

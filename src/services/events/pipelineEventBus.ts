@@ -59,5 +59,16 @@ export function isTerminalEvent(event: RunEvent): boolean {
   if (event.stage === "draft_generation" && event.status === "failed") {
     return true;
   }
+  // V4-5 (LLD_v4 §4): an eval run's run_id (its eval_run_id) emits one
+  // "eval_case" started/completed(or failed) pair per case — terminal only
+  // on the LAST case's completion, identified by its own counts.index/total
+  // (no new EventSummary field needed; `counts` already exists for this).
+  if (
+    event.stage === "eval_case" &&
+    (event.status === "completed" || event.status === "failed") &&
+    event.summary.counts?.index === event.summary.counts?.total
+  ) {
+    return true;
+  }
   return false;
 }

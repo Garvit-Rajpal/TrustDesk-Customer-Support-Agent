@@ -38,6 +38,20 @@ describe("dashboard home (V3-7)", () => {
       expect(res.body.data.eval_summary).toEqual({ available: false });
     });
 
+    // V4-6 (LLD_v4 §4): a pending row from POST /eval-runs/start (no
+    // completed run yet at all) must never surface as "the latest eval
+    // run" — Dashboard.tsx unconditionally reads eval_summary.metrics
+    // whenever available is true, which a pending run's null metrics
+    // would crash on.
+    it("a pending eval run (POST /eval-runs/start, not yet run) does not make eval_summary available", async () => {
+      const started = await request(app).post("/eval-runs/start").set("Authorization", `Bearer ${adminToken}`);
+      expect(started.status).toBe(201);
+
+      const res = await request(app).get("/dashboard/summary").set("Authorization", `Bearer ${agentToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.eval_summary).toEqual({ available: false });
+    });
+
     it("eval_summary becomes available once an eval run has completed for org_default", async () => {
       const evalRun = await request(app)
         .post("/eval-runs")

@@ -3,6 +3,7 @@
 // endpoint is a thin OpenAI-compatible surface, and a fetch-based client
 // avoids pulling in a whole SDK for one endpoint shape.
 import type { ModelAdapter, ModelRequest, ModelResponse } from "./modelAdapter.js";
+import { withRetries } from "./httpRetry.js";
 
 const TIMEOUT_MS = 30_000;
 const MAX_RETRIES = 2;
@@ -73,21 +74,3 @@ export class OpenRouterAdapter implements ModelAdapter {
   }
 }
 
-async function withRetries<T>(fn: () => Promise<T>, retries: number): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      if (attempt < retries) {
-        await sleep(250 * 2 ** attempt); // 250ms, 500ms
-      }
-    }
-  }
-  throw lastError;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

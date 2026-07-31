@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "check": "no_legal_advice",
+      "pattern": "\\b(you should (sue|take legal action)|consult a lawyer about this|file a lawsuit)\\b",
+      "layer": "org_policy"
+    },
+    {
+      "check": "no_unbacked_delivery_guarantee",
+      "pattern": "\\b(guarantee(d)?|promise) (it will|it'll)? ?(arrive|be delivered) by\\b",
+      "layer": "org_policy"
+    }
+  ]
+}

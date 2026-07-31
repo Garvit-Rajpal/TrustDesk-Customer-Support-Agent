@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   api,
   type DraftResult,
+  type Order,
   type Role,
   type TicketDetail,
   type TicketMessage,
@@ -13,6 +14,8 @@ import { RunStepper } from "./RunStepper.js";
 import { FeedbackControl } from "./FeedbackControl.js";
 import { StatusBadge } from "../design-system/StatusBadge.js";
 import { ChatThread } from "../design-system/ChatThread.js";
+import { CustomerCard } from "../design-system/CustomerCard.js";
+import { OrderCard } from "../design-system/OrderCard.js";
 
 type TriageDisplay = Pick<
   TriageResult,
@@ -43,6 +46,9 @@ export function TicketView({
   // component during this session gets the typewriter treatment — history
   // loaded from GET /messages renders instantly.
   const [freshMessageId, setFreshMessageId] = useState<string | null>(null);
+  // V4-4 (LLD_v4 §3): the customer's other orders, for the order-history
+  // section below the current order's OrderCard.
+  const [otherOrders, setOtherOrders] = useState<Order[]>([]);
 
   function load() {
     api
@@ -51,7 +57,9 @@ export function TicketView({
         setDetail(res);
         setTriage(res.ticket.triage);
         setTriageRunId(null);
+        return api.listCustomerOrders(res.customer.customer_id);
       })
+      .then((res) => setOtherOrders(res.orders))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load ticket"));
     loadMessages();
   }
@@ -70,6 +78,7 @@ export function TicketView({
     setDraft(null);
     setMessages([]);
     setFreshMessageId(null);
+    setOtherOrders([]);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
@@ -245,16 +254,29 @@ export function TicketView({
         </div>
       </details>
 
-      <div className="context-grid">
-        <div>
-          <h4>Customer</h4>
-          <pre className="json-panel">{JSON.stringify(customer, null, 2)}</pre>
-        </div>
-        <div>
-          <h4>Order</h4>
-          <pre className="json-panel">{JSON.stringify(order, null, 2)}</pre>
-        </div>
+      <div className="context-grid grid gap-4 md:grid-cols-2">
+        <CustomerCard customer={customer} />
+        {order ? <OrderCard order={order} /> : (
+          <div className="rounded-ds-lg border border-ds-border bg-ds-surface p-4 text-sm text-ds-text-muted shadow-sm">
+            No order linked to this ticket.
+          </div>
+        )}
       </div>
+
+      {otherOrders.filter((o) => o.order_id !== order?.order_id).length > 0 && (
+        <details className="my-4 text-sm">
+          <summary className="cursor-pointer text-ds-text-muted">
+            {customer.name}'s other orders ({otherOrders.filter((o) => o.order_id !== order?.order_id).length})
+          </summary>
+          <div className="mt-2 flex flex-col gap-2">
+            {otherOrders
+              .filter((o) => o.order_id !== order?.order_id)
+              .map((o) => (
+                <OrderCard key={o.order_id} order={o} compact />
+              ))}
+          </div>
+        </details>
+      )}
 
       {error && <p className="error">{error}</p>}
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, type RecommendedAction, type Role, type ToolActionResult } from "../api.js";
+import { api, type Customer, type Order, type RecommendedAction, type Role, type ToolActionResult } from "../api.js";
 
 // Best-effort per-tool payload pre-fill from data already on screen
 // (ticket/order/customer). This does NOT replace the tool catalog's
@@ -7,15 +7,17 @@ import { api, type RecommendedAction, type Role, type ToolActionResult } from ".
 // hand-editable JSON textarea (HLD explicitly allows "JSON panels" here,
 // not a generated form per tool). Fields this can't infer (e.g. `queue`,
 // coupon `amount`) get a placeholder the agent is expected to review.
+// V4-4 (LLD_v4 §3): order/customer are now typed (Order/Customer) instead
+// of Record<string, unknown> — same fields consumed, just no longer opaque.
 function defaultPayload(
   toolName: string,
   ticketId: string,
   reason: string,
-  order: Record<string, unknown> | null,
-  customer: Record<string, unknown> | null
+  order: Order | null,
+  customer: Customer | null
 ): Record<string, unknown> {
   const base = { reason, idempotency_key: `${ticketId}-${toolName}-1` };
-  const items = (order?.items as { sku?: string }[] | undefined) ?? [];
+  const items = order?.items ?? [];
 
   switch (toolName) {
     case "create_replacement_order":
@@ -43,8 +45,8 @@ export function ActionPanel({
   role,
 }: {
   ticketId: string;
-  order: Record<string, unknown> | null;
-  customer: Record<string, unknown> | null;
+  order: Order | null;
+  customer: Customer | null;
   action: RecommendedAction;
   role: Role;
 }) {

@@ -16,6 +16,8 @@ import { AuthenticatedApp, type Session } from "./AuthenticatedApp.js";
 import { Login } from "./components/Login.js";
 import { Landing } from "./pages/Landing.js";
 import { Signup } from "./pages/Signup.js";
+import { PortalVerify } from "./portal/PortalVerify.js";
+import { PortalChat } from "./portal/PortalChat.js";
 
 // V3-1/V3-8 (HLD_v3 ADR-14/ADR-18, LLD_v3 §6): a genuine public tree now
 // exists (/, /signup, /login) alongside the authenticated app, so plain
@@ -59,6 +61,11 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/signup" element={<Signup onSignedUp={handleAuthenticated} />} />
+        {/* W17 (LLD_v4 §7): a genuinely separate, unauthenticated public tree
+            — no `session` gating, since a portal visitor is never an agent. */}
+        <Route path="/portal" element={<Navigate to="/portal/verify" replace />} />
+        <Route path="/portal/verify" element={<PortalVerify />} />
+        <Route path="/portal/chat" element={<PortalChat />} />
         <Route
           path="/login"
           element={

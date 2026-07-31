@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { CreateCustomerRequest } from "../../domain/customerTypes.js";
 import { newCustomerId } from "../../domain/ids.js";
-import { insertCustomer, listCustomers } from "../../db/repos/customersRepo.js";
+import { getCustomerById, insertCustomer, listCustomers } from "../../db/repos/customersRepo.js";
+import { listOrdersByCustomerId } from "../../db/repos/ordersRepo.js";
 import { sendError } from "../errorEnvelope.js";
 import { requirePermission } from "../middleware/permissions.js";
 
@@ -36,6 +37,23 @@ customersRouter.post("/", requirePermission("customers:write"), async (req, res,
     });
 
     res.status(201).json({ data: customer });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// V4-3 (LLD_v4 §2, HLD_v4 ADR-19): order history behind a customer, backing
+// TicketView's new order-history section (W13) — same permission tier as
+// GET /customers, since it's read access to the same customers domain.
+customersRouter.get("/:id/orders", requirePermission("customers:view"), async (req, res, next) => {
+  try {
+    const customer = await getCustomerById(req.orgContext!, req.params.id);
+    if (!customer) {
+      sendError(res, "NOT_FOUND", `Customer ${req.params.id} not found`);
+      return;
+    }
+    const orders = await listOrdersByCustomerId(req.orgContext!, req.params.id);
+    res.status(200).json({ data: { orders } });
   } catch (err) {
     next(err);
   }

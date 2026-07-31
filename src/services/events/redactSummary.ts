@@ -11,6 +11,10 @@ const ALLOWED_KEYS = [
   "resolution_type",
   "counts",
   "durations",
+  // V4-5 (LLD_v4 §4): eval-case stage events name which case is running —
+  // a public eval_cases.jsonl identifier (e.g. "eval_003"), no different in
+  // sensitivity from a ticket_id already visible elsewhere on the wire.
+  "case_id",
 ] as const;
 
 export function redactSummary(input: Record<string, unknown>): Record<string, unknown> {

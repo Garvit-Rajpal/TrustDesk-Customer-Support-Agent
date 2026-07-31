@@ -57,11 +57,19 @@ export default {
           "33%": { transform: "translate(24px, -32px) scale(1.08)" },
           "66%": { transform: "translate(-18px, 18px) scale(0.94)" },
         },
+        // W18 (HLD_v4 ADR-24): groundwork for a v5 animation pass — a
+        // smaller, snappier mount than fade-in-up, for compact repeated
+        // elements (stat tiles, list rows) rather than whole-page sections.
+        "scale-in": {
+          "0%": { opacity: "0", transform: "scale(0.96)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.6s ease-out both",
         "fade-in-up": "fade-in-up 0.7s ease-out both",
         blob: "blob 12s infinite ease-in-out",
+        "scale-in": "scale-in 0.35s ease-out both",
       },
     },
   },

@@ -43,3 +43,17 @@ export async function getOrderById(ctx: OrgContext, orderId: string): Promise<Or
   if (rows.length === 0) return null;
   return Order.parse(rows[0]);
 }
+
+// V4-3 (LLD_v4 §2): a customer's full order history, newest first — backs
+// GET /customers/:id/orders (TicketView's new order-history section, W13).
+export async function listOrdersByCustomerId(ctx: OrgContext, customerId: string): Promise<Order[]> {
+  const { rows } = await pool.query(
+    `SELECT order_id, customer_id, status, placed_at::text, delivered_at::text,
+            eligible_return_until::text, total::float8 AS total, currency,
+            payment_status, tracking_number, items
+     FROM orders WHERE customer_id = $1 AND org_id = $2
+     ORDER BY placed_at DESC`,
+    [customerId, ctx.org_id]
+  );
+  return rows.map((row) => Order.parse(row));
+}

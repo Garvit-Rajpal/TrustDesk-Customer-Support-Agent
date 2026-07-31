@@ -75,4 +75,46 @@ describe("eval-runs API", () => {
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(404);
   });
+
+  // V4-6 (LLD_v4 §4, HLD_v4 ADR-20): mints an ID synchronously, before the
+  // run itself starts, so a client can open the SSE stream first.
+  describe("POST /eval-runs/start", () => {
+    it("401s without a token", async () => {
+      const res = await request(app).post("/eval-runs/start");
+      expect(res.status).toBe(401);
+    });
+
+    it("mints an eval_run_id and persists a pending row (completed_at null, no metrics yet)", async () => {
+      const res = await request(app).post("/eval-runs/start").set("Authorization", `Bearer ${token}`);
+      expect(res.status).toBe(201);
+      expect(res.body.data.eval_run_id).toMatch(/^eval_run_/);
+
+      // V4-6: a pending row, not "not found" — this is what closes the
+      // GET /eval-runs/:runId/events race (see evalRunEvents.test.ts).
+      const fetched = await request(app)
+        .get(`/eval-runs/${res.body.data.eval_run_id}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(fetched.status).toBe(200);
+      expect(fetched.body.data.completed_at).toBeNull();
+      expect(fetched.body.data.metrics).toBeNull();
+    });
+
+    it("a minted eval_run_id can be reused by POST /eval-runs to run under that same id", async () => {
+      const started = await request(app).post("/eval-runs/start").set("Authorization", `Bearer ${token}`);
+      const evalRunId = started.body.data.eval_run_id;
+
+      const res = await request(app)
+        .post("/eval-runs")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ eval_run_id: evalRunId, case_ids: ["eval_001"] });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.eval_run_id).toBe(evalRunId);
+
+      const fetched = await request(app)
+        .get(`/eval-runs/${evalRunId}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(fetched.status).toBe(200);
+    });
+  });
 });

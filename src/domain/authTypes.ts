@@ -28,3 +28,38 @@ export interface TokenClaims {
   role: string;
   org_id: string;
 }
+
+// W17 (LLD_v4 §7, HLD_v4 ADR-23): a deliberately minimal, non-account token
+// minted by POST /customer-auth/verify's ownership check, not a password
+// login. No `role` field — requirePermission() rejects it on every existing
+// agent/admin route by construction (roleHasPermission(undefined, ...) is
+// always false), not by an added check. A zod schema (not just the TS type)
+// backs verifyCustomerToken() below so a *decoded* agent TokenClaims payload
+// (which has no `kind`) is explicitly rejected on /portal/* rather than
+// silently passing through with undefined customer_id/org_id.
+export const CustomerTokenClaims = z.object({
+  customer_id: z.string(),
+  org_id: z.string(),
+  ticket_id: z.string().optional(),
+  kind: z.literal("customer"),
+});
+export type CustomerTokenClaims = z.infer<typeof CustomerTokenClaims>;
+
+// W17 (LLD_v4 §7): POST /customer-auth/verify's request body. LLD_v4 §7
+// describes this as "a zod discriminated union" of `{org_slug, email,
+// order_id}` vs `{org_slug, email, ticket_id}` — but neither variant carries
+// a shared literal field to discriminate on (zod's discriminatedUnion()
+// requires one), so it's implemented here as a single object with an
+// exactly-one-of refinement instead, which accepts the identical two request
+// shapes and rejects a body with both or neither.
+export const CustomerVerifyRequest = z
+  .object({
+    org_slug: z.string().min(1),
+    email: z.string().email(),
+    order_id: z.string().optional(),
+    ticket_id: z.string().optional(),
+  })
+  .refine((data) => (data.order_id ? 1 : 0) + (data.ticket_id ? 1 : 0) === 1, {
+    message: "Exactly one of order_id or ticket_id must be provided",
+  });
+export type CustomerVerifyRequest = z.infer<typeof CustomerVerifyRequest>;

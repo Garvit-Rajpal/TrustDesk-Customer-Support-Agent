@@ -11,9 +11,9 @@ export function MetricTile({
   hint?: string;
 }) {
   return (
-    <div className="rounded-ds-lg border border-ds-border bg-ds-surface p-4 shadow-sm">
+    <div className="animate-scale-in rounded-ds-lg border border-ds-border bg-ds-surface p-4 shadow-sm transition-shadow hover:shadow-md">
       <div className="text-sm font-medium text-ds-text-muted">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-ds-text">{value}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums text-ds-text">{value}</div>
       {hint && <div className="mt-1 text-xs text-ds-text-muted">{hint}</div>}
     </div>
   );

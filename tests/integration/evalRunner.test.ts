@@ -9,6 +9,7 @@ import { runEvalSet, loadEvalCases } from "../../src/services/evalRunner.js";
 import { MockModelAdapter } from "../../src/adapters/mock.js";
 import { DEFAULT_MODEL_SCENARIOS } from "../../src/adapters/defaultMockScenarios.js";
 import { getEvalRunById } from "../../src/db/repos/evalRunsRepo.js";
+import { listRunEventsByRunId } from "../../src/db/repos/runEventsRepo.js";
 import { ORG_DEFAULT } from "../helpers/org.js";
 
 describe("EvalRunner", () => {
@@ -89,5 +90,44 @@ describe("EvalRunner", () => {
     const result = report.case_results[0]!;
     expect(result.triage_run_id).toMatch(/^run_/);
     expect(result.draft_run_id).toMatch(/^run_/);
+  });
+
+  // V4-6 (LLD_v4 §4, HLD_v4 ADR-20): eval-run streaming — every case emits
+  // a started/completed pair under the eval_run_id, so a client can
+  // subscribe (GET /eval-runs/:runId/events) before the run finishes.
+  it("emits a started/completed eval_case event pair per case, in order, under the eval_run_id", async () => {
+    const adapter = new MockModelAdapter(DEFAULT_MODEL_SCENARIOS);
+    const report = await runEvalSet(adapter, ["eval_001", "eval_003"]);
+
+    const events = await listRunEventsByRunId(report.eval_run_id);
+    expect(events).toHaveLength(4);
+    expect(events.map((e) => [e.stage, e.status])).toEqual([
+      ["eval_case", "started"],
+      ["eval_case", "completed"],
+      ["eval_case", "started"],
+      ["eval_case", "completed"],
+    ]);
+    expect((events[0]!.summary as { case_id: string; counts: { index: number; total: number } }).case_id).toBe(
+      "eval_001"
+    );
+    expect((events[0]!.summary as { counts: { index: number; total: number } }).counts).toEqual({
+      index: 1,
+      total: 2,
+    });
+    expect((events[2]!.summary as { case_id: string }).case_id).toBe("eval_003");
+    expect((events[3]!.summary as { counts: { index: number; total: number } }).counts).toEqual({
+      index: 2,
+      total: 2,
+    });
+  });
+
+  it("accepts a pre-minted eval_run_id and reuses it instead of generating its own", async () => {
+    const adapter = new MockModelAdapter(DEFAULT_MODEL_SCENARIOS);
+    const preMinted = "eval_run_pre_minted_test_id";
+    const report = await runEvalSet(adapter, ["eval_001"], preMinted);
+
+    expect(report.eval_run_id).toBe(preMinted);
+    const stored = await getEvalRunById(ORG_DEFAULT, preMinted);
+    expect(stored).not.toBeNull();
   });
 });

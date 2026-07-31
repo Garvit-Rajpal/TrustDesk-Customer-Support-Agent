@@ -1,7 +1,9 @@
 // RetrievalService (HLD ADR-2 / §3): interface-first seam so the FTS engine
 // can be swapped for Elasticsearch/pgvector later without touching callers.
 import { searchKbDocuments } from "../db/repos/kbDocumentsRepo.js";
+import { findSimilarResolutions } from "../db/repos/resolutionEmbeddingsRepo.js";
 import type { OrgContext } from "../domain/orgContext.js";
+import type { EmbeddingAdapter } from "../adapters/embeddingAdapter.js";
 
 export interface RetrievedDocument {
   doc_id: string;
@@ -37,4 +39,22 @@ export function buildBroadQueryText(text: string): string {
   const words = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
   const unique = Array.from(new Set(words)).filter((w) => w.length > 2);
   return unique.join(" or ");
+}
+
+// V4-13 (LLD_v4 §5, HLD_v4 ADR-21): additive to the FTS search above, not a
+// replacement — past resolutions grounded in real, previously sent replies.
+// Returns snippets only (source_text), informational context for the draft
+// prompt, never a citable source (outputScan.ts's checkCitationSubset only
+// ever accepts a doc_id from ctx.retrievedDocIds, so a model "citing" a
+// ticket_id here is already rejected by existing code, unchanged).
+export async function searchSimilarResolutions(
+  ctx: OrgContext,
+  embeddingAdapter: EmbeddingAdapter,
+  queryText: string,
+  category?: string,
+  limit = 3
+): Promise<string[]> {
+  const queryEmbedding = await embeddingAdapter.embed(queryText);
+  const results = await findSimilarResolutions(ctx, queryEmbedding, category, limit);
+  return results.map((r) => r.source_text);
 }

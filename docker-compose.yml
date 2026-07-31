@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgres:16
+    # V4-9 (LLD_v4 §5, HLD_v4 ADR-21): swapped from postgres:16 for the
+    # vector extension (W15 similarity ingestion) — same Postgres 16
+    # on-disk format, existing local volumes keep working unmodified.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: trustdesk
       POSTGRES_PASSWORD: trustdesk

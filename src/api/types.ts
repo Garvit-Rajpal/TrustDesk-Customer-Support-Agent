@@ -8,6 +8,9 @@ declare global {
     interface Request {
       user?: TokenClaims;
       orgContext?: OrgContext;
+      // W17 (LLD_v4 §7): set by customerAuthMiddleware on /portal/* routes
+      // only — never populated alongside `user`/`orgContext` above.
+      customerContext?: { customer_id: string; org_id: string; ticket_id?: string };
     }
   }
 }

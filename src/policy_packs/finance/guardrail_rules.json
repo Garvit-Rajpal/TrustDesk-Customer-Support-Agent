@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "check": "no_investment_advice",
+      "pattern": "\\b(you should invest|buy this stock|guaranteed returns?)\\b",
+      "layer": "org_policy"
+    },
+    {
+      "check": "no_specific_rate_promise",
+      "pattern": "\\b(interest rate of \\d|APR of \\d)",
+      "layer": "org_policy"
+    }
+  ]
+}

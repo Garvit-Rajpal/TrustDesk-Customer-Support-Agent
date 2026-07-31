@@ -75,6 +75,40 @@ describe("customers API", () => {
     expect(ids).toContain("cus_1001"); // seed customer, same org_default
   });
 
+  // V4-3 (LLD_v4 §2): order history behind a customer, backing the new
+  // TicketView order-history section (W13).
+  it("lists a multi-order customer's orders, newest first", async () => {
+    const res = await request(app)
+      .get("/customers/cus_1001/orders")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const ids = res.body.data.orders.map((o: { order_id: string }) => o.order_id);
+    expect(ids).toEqual(expect.arrayContaining(["ord_5001", "ord_5007", "ord_5008", "ord_5009"]));
+
+    const placedDates = res.body.data.orders.map((o: { placed_at: string }) => new Date(o.placed_at).getTime());
+    expect([...placedDates].sort((a: number, b: number) => b - a)).toEqual(placedDates);
+  });
+
+  it("returns an empty array for a customer with a single order", async () => {
+    const res = await request(app)
+      .get("/customers/cus_1006/orders")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.orders.map((o: { order_id: string }) => o.order_id)).toContain("ord_5006");
+  });
+
+  it("404s for a customer that doesn't exist in the caller's org", async () => {
+    const res = await request(app)
+      .get("/customers/cus_does_not_exist/orders")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("401s without a token", async () => {
+    const res = await request(app).get("/customers/cus_1001/orders");
+    expect(res.status).toBe(401);
+  });
+
   it("a newly created customer can immediately be used to create a ticket", async () => {
     const customer = await request(app)
       .post("/customers")

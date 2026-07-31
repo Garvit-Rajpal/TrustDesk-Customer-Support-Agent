@@ -23,4 +23,6 @@ export const newOrgId = () => `org_${nanoid()}`;
 // V2-5 follow-up: POST /customers (see docs/PROGRESS.md — added so a freshly
 // onboarded org, which starts with zero seed customers, can create one).
 export const newCustomerId = () => `cus_${nanoid()}`;
+// V4-11 (LLD_v4 §1/§5): ticket_resolution_embeddings row IDs.
+export const newEmbeddingId = () => `emb_${nanoid()}`;
 

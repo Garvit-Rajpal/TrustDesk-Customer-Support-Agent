@@ -20,7 +20,10 @@ describe("seed loader integrity", () => {
     const summary = await runSeed();
 
     expect(summary.customers).toBe(6);
-    expect(summary.orders).toBe(6);
+    // V4-2 (LLD_v4 §2): orders.json expanded to 24 orders across the 6 seed
+    // customers so ad-hoc demo tickets have a believable order history.
+    // ord_5001-ord_5006 are unchanged verbatim.
+    expect(summary.orders).toBe(24);
     expect(summary.tickets).toBe(8);
     expect(summary.kbDocuments).toBe(8);
     expect(summary.toolCatalog).toBe(6);
@@ -40,7 +43,7 @@ describe("seed loader integrity", () => {
     );
     const byTable = Object.fromEntries(counts);
     expect(byTable.customers).toBe(6);
-    expect(byTable.orders).toBe(6);
+    expect(byTable.orders).toBe(24);
     expect(byTable.tickets).toBe(8);
     expect(byTable.kb_documents).toBe(8);
     expect(byTable.tool_catalog).toBe(6);

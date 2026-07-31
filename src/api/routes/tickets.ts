@@ -1,53 +1,28 @@
 import { Router, type Response } from "express";
-import type { OrgContext } from "../../domain/orgContext.js";
-import type { Ticket } from "../../domain/entities.js";
 import { CreateTicketRequest, ManualReplyRequest, SimulateInboundRequest } from "../../domain/ticketTypes.js";
-import { newMessageId, newTicketId } from "../../domain/ids.js";
-import { getTicketById, listTickets, insertTicket } from "../../db/repos/ticketsRepo.js";
+import { getTicketById, listTickets } from "../../db/repos/ticketsRepo.js";
 import { getCustomerById } from "../../db/repos/customersRepo.js";
 import { getOrderById } from "../../db/repos/ordersRepo.js";
-import { getOrgById } from "../../db/repos/orgsRepo.js";
-import { insertMessage, listMessagesByTicketId } from "../../db/repos/ticketMessagesRepo.js";
+import { listMessagesByTicketId } from "../../db/repos/ticketMessagesRepo.js";
 import { sendError } from "../errorEnvelope.js";
 import type { ModelAdapter } from "../../adapters/modelAdapter.js";
+import type { EmbeddingAdapter } from "../../adapters/embeddingAdapter.js";
 import { runTriage } from "../../services/triage.js";
-import { generateDraft, evaluateAutoSend, type DraftOutcome } from "../../services/draft.js";
-import { closeTicket, resolveTicket, sendDraft, sendManualReply, simulateInbound } from "../../services/ticketThread.js";
-import { getDraftById } from "../../db/repos/draftsRepo.js";
-import { greetingTemplate } from "../../services/ticketGreeting.js";
+import { generateDraft } from "../../services/draft.js";
+import { closeTicket, resolveTicket, sendManualReply, simulateInbound } from "../../services/ticketThread.js";
+import { createTicketWithPipeline, autoSendIfEligible } from "../../services/ticketIntake.js";
 import { getAgentRunById } from "../../db/repos/agentRunsRepo.js";
 import { listRunEventsByRunId } from "../../db/repos/runEventsRepo.js";
 import { isTerminalEvent, pipelineEventBus } from "../../services/events/pipelineEventBus.js";
 import type { RunEvent } from "../../domain/schemas.js";
 import { requirePermission } from "../middleware/permissions.js";
 
-// V3-5 (LLD_v3 §3): shared by both the manual draft-reply route and the
-// ticket-creation auto-pipeline below, so auto-send behaves identically
-// regardless of what triggered the draft. Re-fetches the just-inserted
-// DraftRow (generateDraft only returns a DraftOutcome) since sendDraft
-// needs the full row shape.
-async function autoSendIfEligible(
-  ctx: OrgContext,
-  ticket: Ticket,
-  outcome: DraftOutcome,
-  authorUserId: string
-): Promise<boolean> {
-  if (!evaluateAutoSend(outcome)) {
-    return false;
-  }
-  const draftRow = await getDraftById(ctx, outcome.draftId);
-  if (!draftRow) {
-    return false;
-  }
-  const sendOutcome = await sendDraft(ctx, ticket, draftRow, authorUserId);
-  return sendOutcome.kind === "ok";
-}
-
 // Factory rather than a module-level Router: the triage route needs a
 // ModelAdapter, and tests must be able to inject a MockModelAdapter with
 // scenario-specific canned responses (LLD §1) instead of the app's shared
-// default instance.
-export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
+// default instance. V4-12: embeddingAdapter follows the same pattern for
+// resolveTicket()'s ingestion hook.
+export function buildTicketsRouter(modelAdapter: ModelAdapter, embeddingAdapter: EmbeddingAdapter): Router {
   const ticketsRouter = Router();
 
   // LLD §4.4: list returns ticket summaries + triage-if-present. Expected
@@ -79,7 +54,12 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
     }
   });
 
-  // LLD §4.5: create ticket (demo). FK validation → 400. body stored verbatim.
+  // LLD §4.5: create ticket (demo). FK validation → 400. body stored
+  // verbatim. W17 (LLD_v4 §7, V4-21): the greeting -> triage -> draft ->
+  // auto-send orchestration itself is extracted into
+  // createTicketWithPipeline() — this handler now only does request
+  // validation and translates the typed outcome into the same HTTP
+  // responses it always returned.
   ticketsRouter.post("/", requirePermission("tickets:write"), async (req, res, next) => {
     try {
       const parsed = CreateTicketRequest.safeParse(req.body);
@@ -87,97 +67,26 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
         sendError(res, "VALIDATION_ERROR", "Invalid ticket payload", parsed.error.flatten());
         return;
       }
-      const { customer_id, order_id, channel, subject, body } = parsed.data;
-      const ctx = req.orgContext!;
 
-      const customer = await getCustomerById(ctx, customer_id);
-      if (!customer) {
-        sendError(res, "VALIDATION_ERROR", `customer_id ${customer_id} does not exist`);
+      const outcome = await createTicketWithPipeline(req.orgContext!, modelAdapter, embeddingAdapter, parsed.data);
+      if (outcome.kind === "invalid_customer") {
+        sendError(res, "VALIDATION_ERROR", `customer_id ${outcome.customer_id} does not exist`);
+        return;
+      }
+      if (outcome.kind === "invalid_order") {
+        sendError(res, "VALIDATION_ERROR", `order_id ${outcome.order_id} does not exist`);
+        return;
+      }
+      if (outcome.kind === "order_customer_mismatch") {
+        sendError(
+          res,
+          "VALIDATION_ERROR",
+          `order_id ${outcome.order_id} does not belong to customer_id ${outcome.customer_id}`
+        );
         return;
       }
 
-      let order = null as Awaited<ReturnType<typeof getOrderById>>;
-      if (order_id) {
-        order = await getOrderById(ctx, order_id);
-        if (!order) {
-          sendError(res, "VALIDATION_ERROR", `order_id ${order_id} does not exist`);
-          return;
-        }
-        if (order.customer_id !== customer_id) {
-          sendError(
-            res,
-            "VALIDATION_ERROR",
-            `order_id ${order_id} does not belong to customer_id ${customer_id}`
-          );
-          return;
-        }
-      }
-
-      const ticket = await insertTicket(ctx, {
-        ticket_id: newTicketId(),
-        customer_id,
-        order_id: order_id ?? null,
-        channel,
-        subject,
-        body,
-        created_at: new Date().toISOString(),
-      });
-
-      // V2-4 (LLD_v2 §1): every ticket needs an initial inbound thread
-      // message — the draft pipeline always reads the thread, never
-      // tickets.body directly (see backfill migration + seed loader for the
-      // same rule applied to pre-existing tickets).
-      await insertMessage(ctx, {
-        message_id: newMessageId(),
-        ticket_id: ticket.ticket_id,
-        direction: "inbound",
-        body: ticket.body,
-        author: "customer",
-      });
-
-      // V3-4 (LLD_v3 §3, HLD_v3 ADR-15): deterministic, per-vertical
-      // greeting — no model call, no status transition. Best-effort: an
-      // org lookup failure here shouldn't fail ticket creation, which is
-      // already committed by this point.
-      const org = await getOrgById(ctx.org_id);
-      if (org) {
-        await insertMessage(ctx, {
-          message_id: newMessageId(),
-          ticket_id: ticket.ticket_id,
-          direction: "outbound",
-          body: greetingTemplate(org.vertical),
-          author: "system",
-        });
-      }
-
-      // V3-5 (LLD_v3 §3, HLD_v3 ADR-15): synchronously run the same
-      // triage -> draft pipeline the manual buttons trigger, right after
-      // ticket creation (HLD invariant #6: every AI run's agent_runs row is
-      // written before the API responds — no new async/background pattern).
-      // Best-effort: the ticket + greeting are already committed above, so a
-      // model/pipeline failure here must never fail ticket creation itself.
-      let pipeline: { triage: boolean; draft: boolean; auto_sent: boolean } = {
-        triage: false,
-        draft: false,
-        auto_sent: false,
-      };
-      try {
-        const triageOutcome = await runTriage(ctx, modelAdapter, ticket, customer, order);
-        if (triageOutcome.status === "completed") {
-          pipeline.triage = true;
-          const triagedTicket = await getTicketById(ctx, ticket.ticket_id);
-          if (triagedTicket) {
-            const draftOutcome = await generateDraft(ctx, modelAdapter, triagedTicket, customer, order);
-            pipeline.draft = true;
-            pipeline.auto_sent = await autoSendIfEligible(ctx, triagedTicket, draftOutcome, "system");
-          }
-        }
-      } catch {
-        // Leave pipeline at its last-known-true state; ticket creation
-        // itself already succeeded and must be reported as such.
-      }
-
-      res.status(201).json({ data: { ...ticket, pipeline } });
+      res.status(201).json({ data: { ...outcome.ticket, pipeline: outcome.pipeline } });
     } catch (err) {
       next(err);
     }
@@ -243,7 +152,7 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
       const customer = await getCustomerById(ctx, ticket.customer_id);
       const order = ticket.order_id ? await getOrderById(ctx, ticket.order_id) : null;
 
-      const outcome = await generateDraft(ctx, modelAdapter, ticket, customer!, order);
+      const outcome = await generateDraft(ctx, modelAdapter, ticket, customer!, order, embeddingAdapter, modelAdapter);
       // V3-5 (LLD_v3 §3, HLD_v3 ADR-15): same eligibility check the
       // ticket-creation auto-pipeline uses below — auto-send behaves
       // identically whether triage/draft were triggered by ticket creation
@@ -366,7 +275,7 @@ export function buildTicketsRouter(modelAdapter: ModelAdapter): Router {
         sendError(res, "NOT_FOUND", `Ticket ${req.params.id} not found`);
         return;
       }
-      const outcome = await resolveTicket(ctx, ticket);
+      const outcome = await resolveTicket(ctx, ticket, embeddingAdapter);
       if (outcome.kind === "illegal_transition") {
         sendError(res, "CONFLICT", `Ticket is "${outcome.from}" — cannot resolve from this status`);
         return;

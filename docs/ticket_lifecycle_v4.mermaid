@@ -1,0 +1,64 @@
+flowchart TD
+    A[Ticket opened - status: open<br/>first inbound message in thread<br/>system greeting appended immediately] --> B0
+    PORTAL[NEW v4: Customer chat portal<br/>POST /customer-auth/verify - lightweight<br/>email+order/ticket check, no password<br/>issues CustomerToken, kind:customer, no Role] -->|WS /customer-chat<br/>ticketIntake.ts shared with POST /tickets| A
+    PORTAL -->|existing ticket_id in token<br/>stateless reconnect: replay ticket_messages| B0
+
+    B0[NEW v4: Guardrail L1 - eager scan<br/>runs at message-insert time now too<br/>simulateInbound / receiveCustomerMessage<br/>closes the v3 ADR-15 gap] --> B[Guardrail L1: input scan<br/>still also runs per-pipeline-trigger<br/>flags force should_escalate, never blocks]
+    B --> HO{Ticket already<br/>human_owned?}
+
+    HO -->|yes: human took over earlier| HR[Agent composes a manual reply<br/>POST /tickets/:id/messages/reply<br/>bypasses the AI pipeline entirely]
+    HR --> HU[Outbound msg appended<br/>status: awaiting_customer<br/>human_owned/by/at stamped - idempotent]
+    HU --> WSOUT3{NEW v4: customer connected<br/>via portal WS?}
+    WSOUT3 -->|yes| WSPUSH3[sent-status message pushed to<br/>customer WS client verbatim -<br/>an out-of-band human reply reaches<br/>an already-open connection too]
+    WSOUT3 -->|no| V
+    WSPUSH3 --> V
+
+    HO -->|no| C[Triage - re-runnable per inbound msg<br/>auto-triggered synchronously right after<br/>ticket creation, same fn the manual button calls]
+    C --> T1[(agent_run + run_events<br/>SSE stepper: live + replay<br/>NEW v4: same mechanism now also<br/>drives eval-run streaming - eval_case stage)]
+    C --> D0[NEW v4: similarity retrieval<br/>searchSimilarResolutions - pgvector<br/>past sent-draft resolutions, org-scoped<br/>informational context, non-citable]
+    D0 --> D[Retrieval - org-scoped FTS<br/>filtered by triage category]
+    D --> E[Eligibility facts - code, not LLM<br/>ticket.created_at vs policy windows]
+    E --> F[Draft generation targets latest inbound msg<br/>context: thread history + similarity snippets<br/>+ facts + docs, each fenced as untrusted data]
+    F --> G[Guardrail L3: output scan<br/>+ org-aware unrelated-customer check]
+    G --> G1[NEW v4: Guardrail - semantic judge<br/>second, cheaper-tier model call<br/>generic rubric: scope, commitments, tone]
+    G1 --> G2[NEW v4: Guardrail - org policy-pack rules<br/>src/policy_packs/{vertical}/guardrail_rules.json<br/>declarative, reuses outputScan pattern-match]
+    G2 -->|any layer fails| G3[Fail closed: template draft substituted<br/>rejected output kept, manager-visible only<br/>same single substitution point, v1-v4]
+    G2 -->|all pass| H[Draft saved: resolution_type + citations<br/>+ catalog-validated recommended actions]
+    G3 --> H
+    H --> T2[(agent_run + run_events<br/>guardrail_results: input_scan, output_scan,<br/>semantic_judge, org_policy)]
+    H --> AS{evaluateAutoSend -<br/>resolution_type === answered AND<br/>no recommended action requires approval?<br/>deterministic code, not model output}
+
+    AS -->|yes| AUTO[Auto-send: sendDraft called immediately<br/>no human click - draft: sent<br/>ticket: awaiting_customer]
+    AUTO --> WSOUT{NEW v4: customer connected<br/>via portal WS?}
+    WSOUT -->|yes| WSPUSH[sent-status message pushed to<br/>customer WS client verbatim]
+    WSOUT -->|no| V
+    WSPUSH --> V
+
+    AS -->|no: escalated / refused_by_policy<br/>/ approval-gated action| I{Action recommended?}
+    I -->|yes| L[POST /tool-actions<br/>catalog validation + idempotency key<br/>unaffected by human-takeover status]
+    L --> M{requires_human_approval<br/>from catalog}
+    M -->|yes| N[approval_required] --> P{Manager decision - RBAC}
+    P -->|approve| O[approved]
+    P -->|reject| Q[rejected - terminal<br/>agent handles manually]
+    M -->|no| O
+    O --> R0[NEW v4: Guardrail - tool-execution-time scan<br/>re-checks catalog constraints + ticket still open<br/>right before execute, fail closed]
+    R0 -->|fail| R1[guardrail_blocked outcome<br/>action stays approved, retryable]
+    R0 -->|pass| R[Execute: re-validate eligibility + idempotent replay<br/>executed or failed]
+    I -->|no| S[Agent reviews draft]
+    R --> S
+    R1 --> S
+    Q --> S
+    S -->|send the AI draft as-is| U[POST /drafts/:id/send<br/>outbound message appended, draft: sent<br/>ticket: awaiting_customer<br/>human_owned NOT set - AI stays eligible]
+    S -->|write a manual reply instead| HR
+    U --> WSOUT2{NEW v4: customer connected<br/>via portal WS?}
+    WSOUT2 -->|yes| WSPUSH2[sent-status message pushed to<br/>customer WS client verbatim]
+    WSOUT2 -->|no| V
+    WSPUSH2 --> V
+    U --> V{Customer replies?<br/>agent-simulated OR NEW v4: real portal<br/>WS message via receiveCustomerMessage}
+    V -->|yes - status: customer_replied| B0
+    V -->|no, AI drafted but not auto-sent| WSSTATUS[NEW v4: portal WS receives generic<br/>a support specialist will respond shortly<br/>never the pending draft body or its<br/>guardrail outcome]
+    V -->|no| W[Agent resolves - status: resolved]
+    W --> EMB[NEW v4: best-effort embedding ingestion<br/>resolveTicket hook, sent-draft resolutions only<br/>never eval-run tickets, try/catch, non-blocking]
+    EMB --> X{Customer replies after resolve?}
+    X -->|yes - reopened: customer_replied| B0
+    X -->|no| Y[Closed - lifecycle ends<br/>feedback ratings feed quality dashboard]

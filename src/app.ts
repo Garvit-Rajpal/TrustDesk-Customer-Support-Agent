@@ -14,19 +14,25 @@ import { customersRouter } from "./api/routes/customers.js";
 import { platformRouter } from "./api/routes/platform.js";
 import { dashboardRouter } from "./api/routes/dashboard.js";
 import { signupRouter } from "./api/routes/signup.js";
+import { customerAuthRouter } from "./api/routes/customerAuth.js";
 import { authMiddleware } from "./api/middleware/auth.js";
 import { tenancyMiddleware } from "./api/middleware/tenancy.js";
 import { errorHandler } from "./api/middleware/errors.js";
 import type { ModelAdapter } from "./adapters/modelAdapter.js";
 import { MockModelAdapter } from "./adapters/mock.js";
 import { DEFAULT_MODEL_SCENARIOS } from "./adapters/defaultMockScenarios.js";
+import type { EmbeddingAdapter } from "./adapters/embeddingAdapter.js";
+import { MockEmbeddingAdapter } from "./adapters/mockEmbedding.js";
 
 // Single source of truth for route wiring, parameterized on the AI adapter
 // (ADR-3). server.ts uses this with createModelAdapter() (live OpenRouter
 // when configured, mock otherwise); the `app` export below always uses the
 // mock, so importing it — as every test does — can never reach OpenRouter
-// regardless of a developer's .env (LLD §1 invariant).
-export function buildApp(modelAdapter: ModelAdapter): Express {
+// regardless of a developer's .env (LLD §1 invariant). V4-12 extends this
+// same guarantee to embeddings: embeddingAdapter defaults to
+// MockEmbeddingAdapter, so every test's resolveTicket() ingestion call
+// stays local/in-memory too.
+export function buildApp(modelAdapter: ModelAdapter, embeddingAdapter: EmbeddingAdapter = new MockEmbeddingAdapter()): Express {
   const app = express();
 
   app.use(express.json());
@@ -35,11 +41,15 @@ export function buildApp(modelAdapter: ModelAdapter): Express {
   // signup — mounted at the same tier as /auth, before authMiddleware.
   // No req.user/req.orgContext exists yet; createOrg() never needed one.
   app.use("/signup", signupRouter);
+  // W17 (LLD_v4 §7, HLD_v4 ADR-23): public, unauthenticated end-customer
+  // ownership verification — same public tier as /signup, before
+  // authMiddleware. Issues a CustomerToken, never an agent TokenClaims.
+  app.use("/customer-auth", customerAuthRouter);
 
   // ADR-4: every route below requires a valid JWT. V2-5: tenancyMiddleware
   // runs right after auth on every one of them, so req.orgContext is always
   // populated before a permission check or handler runs.
-  app.use("/tickets", authMiddleware, tenancyMiddleware, buildTicketsRouter(modelAdapter));
+  app.use("/tickets", authMiddleware, tenancyMiddleware, buildTicketsRouter(modelAdapter, embeddingAdapter));
   app.use("/documents", authMiddleware, tenancyMiddleware, documentsRouter);
   app.use("/agent-runs", authMiddleware, tenancyMiddleware, agentRunsRouter);
   app.use("/tool-actions", authMiddleware, tenancyMiddleware, toolActionsRouter);

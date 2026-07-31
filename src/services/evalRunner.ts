@@ -23,6 +23,7 @@ import { insertEvalRun } from "../db/repos/evalRunsRepo.js";
 import { runTriage } from "./triage.js";
 import { generateDraft } from "./draft.js";
 import { aggregateMetrics, failedCaseResult, scoreCase } from "./evalScorer.js";
+import { pipelineEventBus } from "./events/pipelineEventBus.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EVAL_CASES_PATH = path.resolve(__dirname, "../../data/eval_cases.jsonl");
@@ -87,7 +88,13 @@ export interface EvalRunReport {
 
 export async function runEvalSet(
   modelAdapter: ModelAdapter,
-  caseIds?: string[]
+  caseIds?: string[],
+  // V4-6 (LLD_v4 §4, HLD_v4 ADR-20): minted upfront (default) rather than
+  // only once the run completes, so a client can mint an ID via
+  // POST /eval-runs/start, subscribe to GET /eval-runs/:runId/events, THEN
+  // start the run — the same "ID exists before the run does" property
+  // single-ticket runs already have via agent_runs' run_id.
+  evalRunId: string = newEvalRunId()
 ): Promise<EvalRunReport> {
   const startedAt = new Date().toISOString();
   const allCases = await loadEvalCases();
@@ -97,13 +104,23 @@ export async function runEvalSet(
   // and the production services aren't designed for concurrent calls
   // against the same MockModelAdapter call-count bookkeeping.
   const caseResults: EvalCaseResult[] = [];
-  for (const evalCase of cases) {
-    caseResults.push(await runOneCase(modelAdapter, evalCase));
+  for (let i = 0; i < cases.length; i++) {
+    const evalCase = cases[i]!;
+    const counts = { index: i + 1, total: cases.length };
+    await pipelineEventBus.emitStage(evalRunId, "eval_case", "started", { case_id: evalCase.case_id, counts });
+    try {
+      caseResults.push(await runOneCase(modelAdapter, evalCase));
+      await pipelineEventBus.emitStage(evalRunId, "eval_case", "completed", { case_id: evalCase.case_id, counts });
+    } catch (err) {
+      // A terminal event either way, so an SSE subscriber's connection
+      // always ends deterministically rather than hanging on a thrown case.
+      await pipelineEventBus.emitStage(evalRunId, "eval_case", "failed", { case_id: evalCase.case_id, counts });
+      throw err;
+    }
   }
 
   const metrics = aggregateMetrics(caseResults);
   const completedAt = new Date().toISOString();
-  const evalRunId = newEvalRunId();
 
   await insertEvalRun(EVAL_ORG, {
     eval_run_id: evalRunId,

@@ -95,8 +95,17 @@ export const RawDraftOutput = z.object({
 });
 export type RawDraftOutput = z.infer<typeof RawDraftOutput>;
 
+// V4-15/16/17 (LLD_v4 §6): "semantic_judge", "org_policy", "tool_execution"
+// are additive — existing values/consumers unchanged.
 export const GuardrailResult = z.object({
-  layer: z.enum(["input_scan", "prompt_structure", "output_scan"]),
+  layer: z.enum([
+    "input_scan",
+    "prompt_structure",
+    "output_scan",
+    "semantic_judge",
+    "org_policy",
+    "tool_execution",
+  ]),
   check: z.string(),
   passed: z.boolean(),
   detail: z.string().optional(),
@@ -106,6 +115,10 @@ export type GuardrailResult = z.infer<typeof GuardrailResult>;
 // V2-1 (LLD_v2 §1/§2, ADR-8): the six pipeline stages any run passes
 // through; a given run only emits events for the stages it actually
 // executes (e.g. a triage run never reaches retrieval).
+// V4-5 (LLD_v4 §4, HLD_v4 ADR-20): "eval_case" is a seventh, distinct kind
+// of run — an eval run's run_id is its eval_run_id, and each case emits one
+// started/completed(or failed) pair, reusing the exact same
+// PipelineEventBus/run_events machinery single-ticket runs already use.
 export const PipelineStage = z.enum([
   "input_scan",
   "triage",
@@ -113,6 +126,7 @@ export const PipelineStage = z.enum([
   "eligibility",
   "draft_generation",
   "output_scan",
+  "eval_case",
 ]);
 export type PipelineStage = z.infer<typeof PipelineStage>;
 
@@ -130,6 +144,8 @@ export const EventSummary = z
     resolution_type: z.string().optional(),
     counts: z.record(z.string(), z.number()).optional(),
     durations: z.record(z.string(), z.number()).optional(),
+    // V4-5 (LLD_v4 §4): which eval case an "eval_case" stage event is for.
+    case_id: z.string().optional(),
   })
   .strict();
 export type EventSummary = z.infer<typeof EventSummary>;

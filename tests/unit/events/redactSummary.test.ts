@@ -17,6 +17,8 @@ describe("redactSummary", () => {
       resolution_type: "answered",
       counts: { passed: 2, failed: 1 },
       durations: { model_ms: 480 },
+      // V4-5 (LLD_v4 §4): eval-case stage events.
+      case_id: "eval_003",
     };
     expect(redactSummary(input)).toEqual(input);
   });

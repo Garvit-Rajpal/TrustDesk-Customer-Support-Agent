@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type EvalReport as EvalReportData, type Role } from "../api.js";
+import { EvalRunStepper } from "./EvalRunStepper.js";
 
 const METRIC_LABELS: Record<string, string> = {
   triage_accuracy: "Triage accuracy",
@@ -12,12 +13,18 @@ export function EvalReport({ role }: { role: Role }) {
   const [report, setReport] = useState<EvalReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // V4-8 (LLD_v4 §4): minted via POST /eval-runs/start so EvalRunStepper
+  // can subscribe before the run itself starts.
+  const [runningEvalRunId, setRunningEvalRunId] = useState<string | null>(null);
 
   async function handleRun() {
     setError(null);
     setBusy(true);
+    setReport(null);
     try {
-      setReport(await api.runEval());
+      const { eval_run_id } = await api.startEvalRun();
+      setRunningEvalRunId(eval_run_id);
+      setReport(await api.runEval(undefined, eval_run_id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Eval run failed");
     } finally {
@@ -38,6 +45,12 @@ export function EvalReport({ role }: { role: Role }) {
         <p className="muted">Only admins can trigger an eval run.</p>
       )}
       {error && <p className="error">{error}</p>}
+
+      {busy && (
+        <div className="my-4">
+          <EvalRunStepper evalRunId={runningEvalRunId} />
+        </div>
+      )}
 
       {report && (
         <>

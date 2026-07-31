@@ -38,6 +38,20 @@ export async function getCustomerById(ctx: OrgContext, customerId: string): Prom
   return Customer.parse(rows[0]);
 }
 
+// W17 (LLD_v4 §7): POST /customer-auth/verify looks up the claimed customer
+// by org-scoped email before checking order/ticket ownership. Case-sensitive
+// exact match — same as every other seeded/inserted email in this app,
+// no normalization layer exists elsewhere either.
+export async function getCustomerByEmail(ctx: OrgContext, email: string): Promise<Customer | null> {
+  const { rows } = await pool.query(
+    `SELECT customer_id, name, email, tier, country, verified, tags, created_at::text
+     FROM customers WHERE email = $1 AND org_id = $2`,
+    [email, ctx.org_id]
+  );
+  if (rows.length === 0) return null;
+  return Customer.parse(rows[0]);
+}
+
 // V2-5 follow-up (POST /customers): the real (non-seed) write path — a
 // plain INSERT, not upsertCustomer's seed-only ON CONFLICT upsert.
 export async function insertCustomer(ctx: OrgContext, customer: Customer): Promise<Customer> {

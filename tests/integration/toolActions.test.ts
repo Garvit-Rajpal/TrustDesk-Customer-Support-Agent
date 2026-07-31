@@ -10,7 +10,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { pool, truncateAll } from "../../src/db/pool.js";
 import { runSeed } from "../../src/db/seed.js";
-import { getTicketById, updateTicketTriage, insertTicket } from "../../src/db/repos/ticketsRepo.js";
+import { getTicketById, updateTicketTriage, updateTicketStatus, insertTicket } from "../../src/db/repos/ticketsRepo.js";
 import { decideToolAction, executeToolAction, requestToolAction } from "../../src/services/toolActions.js";
 import { newTicketId } from "../../src/domain/ids.js";
 import { getUserByUsername } from "../../src/db/repos/usersRepo.js";
@@ -342,6 +342,40 @@ describe("ToolActionService.executeToolAction — execute + re-validation", () =
     // open_carrier_investigation auto-approves; no separate approve call needed.
     const outcome = await executeToolAction(ORG_DEFAULT, created.action.action_id);
     expect(outcome.kind).toBe("executed");
+  });
+
+  // V4-17 (LLD_v4 §6, HLD_v4 ADR-22): tool-execution-time guardrail. Time
+  // has passed since approval — the ticket may have moved to a terminal
+  // status in between, which toolExecutionScan() re-checks right before the
+  // eligibility-gated check runs.
+  it("blocks execution when the ticket has since moved to a terminal status, without failing the action (retryable)", async () => {
+    const ticket = await triagedTicket("tkt_9001", "refund");
+    const created = await requestToolAction(ORG_DEFAULT, ticket, "create_replacement_order", {
+      order_id: "ord_5001",
+      sku: "BG-AIRPODS-01",
+      reason: "damaged",
+      idempotency_key: "tkt_9001-execute-guardrail-blocked",
+    });
+    if (created.kind !== "created") throw new Error("fixture setup failed");
+    await decideToolAction(ORG_DEFAULT, created.action.action_id, reviewerId, "ok", "approved");
+
+    // Ticket reopens (e.g. customer replied) between approval and execution.
+    await updateTicketStatus(ORG_DEFAULT, "tkt_9001", "resolved");
+
+    const blocked = await executeToolAction(ORG_DEFAULT, created.action.action_id);
+    expect(blocked.kind).toBe("guardrail_blocked");
+    if (blocked.kind === "guardrail_blocked") {
+      // Status stays "approved" (unchanged) — a blocked attempt is not a
+      // terminal failure the way "failed" is, since the blocking condition
+      // may not recur on a later retry.
+      expect(blocked.action.status).toBe("approved");
+      expect(blocked.result).toMatchObject({ layer: "tool_execution", passed: false });
+    }
+
+    // Retryable: once the blocking condition clears, execution succeeds.
+    await updateTicketStatus(ORG_DEFAULT, "tkt_9001", "in_progress");
+    const retried = await executeToolAction(ORG_DEFAULT, created.action.action_id);
+    expect(retried.kind).toBe("executed");
   });
 });
 

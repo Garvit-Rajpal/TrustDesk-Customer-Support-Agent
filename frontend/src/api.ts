@@ -1,13 +1,20 @@
-// Thin fetch wrapper over the TrustDesk API. Deliberately loosely typed
-// (Record<string, unknown> / any for nested JSON) — HLD §3 calls the
-// frontend "simple; JSON panels acceptable; polish not graded", so this
-// mirrors backend response shapes by hand rather than sharing types across
-// a package boundary that doesn't otherwise exist.
+// Thin fetch wrapper over the TrustDesk API. Types mirror backend response
+// shapes by hand rather than sharing types across a package boundary that
+// doesn't otherwise exist. V1-v3's "JSON panels acceptable, polish not
+// graded" allowance for customer/order rendering is superseded by V4-4
+// (LLD_v4 §3, HLD_v4 ADR-19) — those two now have typed shapes and real
+// card components instead of a raw JSON dump.
 const TOKEN_KEY = "trustdesk_token";
 const ROLE_KEY = "trustdesk_role";
 const ORG_ID_KEY = "trustdesk_org_id";
 const ORG_NAME_KEY = "trustdesk_org_name";
 const WELCOME_SEEN_KEY = "trustdesk_welcome_seen_at";
+// W17 (LLD_v4 §7): deliberately separate keys from the agent token above —
+// a customer_token carries no `role` and must never be sent on an
+// agent/admin route (or vice versa); keeping them in different storage
+// slots means a browser tab can't accidentally mix the two up.
+const CUSTOMER_TOKEN_KEY = "trustdesk_customer_token";
+const CUSTOMER_TICKET_ID_KEY = "trustdesk_customer_ticket_id";
 
 export type Role = "agent" | "manager" | "admin";
 
@@ -63,6 +70,25 @@ export function setWelcomeSeenAt(value: string | null): void {
 }
 export function clearWelcomeSeenAt(): void {
   localStorage.removeItem(WELCOME_SEEN_KEY);
+}
+
+// W17 (LLD_v4 §7): PortalVerify stores these; PortalChat/usePortalSocket
+// read them. No customer *account* system exists — this is just enough
+// persistence to survive a page refresh within the same verified session.
+export function getCustomerToken(): string | null {
+  return localStorage.getItem(CUSTOMER_TOKEN_KEY);
+}
+export function getCustomerTicketId(): string | null {
+  return localStorage.getItem(CUSTOMER_TICKET_ID_KEY);
+}
+export function setCustomerSession(token: string, ticketId: string | null): void {
+  localStorage.setItem(CUSTOMER_TOKEN_KEY, token);
+  if (ticketId) localStorage.setItem(CUSTOMER_TICKET_ID_KEY, ticketId);
+  else localStorage.removeItem(CUSTOMER_TICKET_ID_KEY);
+}
+export function clearCustomerSession(): void {
+  localStorage.removeItem(CUSTOMER_TOKEN_KEY);
+  localStorage.removeItem(CUSTOMER_TICKET_ID_KEY);
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -202,10 +228,34 @@ export interface CreateTicketResult extends TicketSummary {
   pipeline: { triage: boolean; draft: boolean; auto_sent: boolean };
 }
 
+// V4-4 (LLD_v4 §3): typed order shape, replacing TicketDetail's previous
+// Record<string, unknown> — backs OrderCard.tsx.
+export interface OrderItem {
+  sku: string;
+  name: string;
+  quantity: number;
+  category: string;
+  final_sale: boolean;
+}
+
+export interface Order {
+  order_id: string;
+  customer_id: string;
+  status: string;
+  placed_at: string;
+  delivered_at: string | null;
+  eligible_return_until: string | null;
+  total: number;
+  currency: string;
+  payment_status: string;
+  tracking_number: string | null;
+  items: OrderItem[];
+}
+
 export interface TicketDetail {
   ticket: TicketSummary;
-  customer: Record<string, unknown>;
-  order: Record<string, unknown> | null;
+  customer: Customer;
+  order: Order | null;
 }
 
 export interface TriageResult {
@@ -374,6 +424,18 @@ export interface DashboardSummary {
     | { available: true; eval_run_id: string; completed_at: string | null; metrics: Record<string, number> };
 }
 
+// W17 (LLD_v4 §7, HLD_v4 ADR-23): exactly one of order_id/ticket_id, same
+// XOR the backend's CustomerVerifyRequest schema enforces.
+export type CustomerVerifyInput =
+  | { org_slug: string; email: string; order_id: string; ticket_id?: undefined }
+  | { org_slug: string; email: string; order_id?: undefined; ticket_id: string };
+
+export interface CustomerVerifyResult {
+  customer_token: string;
+  customer: { customer_id: string; name: string };
+  ticket_id?: string;
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<LoginResult>("POST", "/auth/login", { username, password }),
@@ -386,6 +448,10 @@ export const api = {
 
   listCustomers: () => request<{ customers: Customer[] }>("GET", "/customers"),
   createCustomer: (input: CreateCustomerInput) => request<Customer>("POST", "/customers", input),
+  // V4-4 (LLD_v4 §2/§3): order history behind a customer — TicketView's
+  // new order-history section.
+  listCustomerOrders: (customerId: string) =>
+    request<{ orders: Order[] }>("GET", `/customers/${customerId}/orders`),
 
   requestAction: (payload: { ticket_id: string; tool_name: string; payload: Record<string, unknown> }) =>
     request<ToolActionResult>("POST", "/tool-actions", payload),
@@ -396,8 +462,14 @@ export const api = {
   executeAction: (actionId: string) =>
     request<ToolActionResult>("POST", `/tool-actions/${actionId}/execute`),
 
-  runEval: (caseIds?: string[]) =>
-    request<EvalReport>("POST", "/eval-runs", caseIds ? { case_ids: caseIds } : {}),
+  runEval: (caseIds?: string[], evalRunId?: string) =>
+    request<EvalReport>("POST", "/eval-runs", {
+      ...(caseIds ? { case_ids: caseIds } : {}),
+      ...(evalRunId ? { eval_run_id: evalRunId } : {}),
+    }),
+  // V4-8 (LLD_v4 §4, HLD_v4 ADR-20): mints an eval_run_id before the run
+  // starts, so EvalRunStepper can subscribe to its SSE stream first.
+  startEvalRun: () => request<{ eval_run_id: string }>("POST", "/eval-runs/start"),
 
   getAgentRun: (runId: string) => request<AgentRunTrace>("GET", `/agent-runs/${runId}`),
 
@@ -435,6 +507,13 @@ export const api = {
 
   // V3-3 (LLD_v3 §2, HLD_v3 ADR-14): public, unauthenticated.
   signup: (input: SignupInput) => request<SignupResult>("POST", "/signup", input),
+
+  // W17 (LLD_v4 §7, HLD_v4 ADR-23): public, unauthenticated end-customer
+  // ownership verification. Note this call never sends the agent `token` —
+  // request() only attaches one if getToken() returns non-null, which is
+  // fine here since PortalVerify is reached outside any agent session.
+  customerVerify: (input: CustomerVerifyInput) =>
+    request<CustomerVerifyResult>("POST", "/customer-auth/verify", input),
 
   // V3-4 (LLD_v3 §3, HLD_v3 ADR-15): human takeover — bypasses the draft
   // pipeline entirely.

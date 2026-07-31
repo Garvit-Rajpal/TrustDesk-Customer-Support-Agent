@@ -106,6 +106,17 @@ toolActionsRouter.post("/:id/execute", requirePermission("tool_actions:approve")
       sendError(res, "CONFLICT", `Tool action is "${outcome.from}", not "approved"`);
       return;
     }
+    // V4-17: re-validation at execute time failed — action stays "approved"
+    // (retryable), distinct from "failed" (terminal).
+    if (outcome.kind === "guardrail_blocked") {
+      sendError(
+        res,
+        "GUARDRAIL_BLOCKED",
+        `Tool action execution blocked by guardrail re-validation: ${outcome.result.detail ?? "check failed"}`,
+        { result: outcome.result }
+      );
+      return;
+    }
     res.status(200).json({
       data: {
         action_id: outcome.action.action_id,

@@ -85,6 +85,16 @@ describe("outputScan", () => {
       const result = outputScan(cleanDraft({ citations: [] }), baseContext());
       expect(result.results.find((r) => r.check === "citation_subset")?.passed).toBe(true);
     });
+
+    // V4-13 (LLD_v4 §5, HLD_v4 ADR-21): W15's similar-past-resolutions
+    // prompt block is explicitly non-citable — a model "citing" a
+    // ticket_id as though it were a KB doc_id is rejected by this exact,
+    // pre-existing check, with zero guardrail schema change.
+    it("fails when the model cites a ticket_id from the similar-resolutions context instead of a real doc_id", () => {
+      const result = outputScan(cleanDraft({ citations: ["tkt_9001"] }), baseContext());
+      expect(result.passed).toBe(false);
+      expect(result.results.find((r) => r.check === "citation_subset")?.passed).toBe(false);
+    });
   });
 
   describe("internal_leak", () => {

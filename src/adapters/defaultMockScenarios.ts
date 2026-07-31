@@ -39,6 +39,13 @@ function draft(spec: {
 }
 
 export const DEFAULT_MODEL_SCENARIOS: Record<string, MockResponseSpec> = {
+  // V4-15 (LLD_v4 §6): wildcard fallback (see MockModelAdapter's
+  // "*:<kind>" resolution) so every seeded/freshly-created ticket's
+  // semantic-judge call defaults to a passing verdict — a test that wants
+  // to exercise the fail-closed path registers its own exact
+  // "<ticket_id>:judge" scenario, which takes priority over this wildcard.
+  "*:judge": { content: JSON.stringify({ passed: true, reason: "stays in scope, appropriate tone" }) },
+
   "tkt_9001:triage": triage({
     category: "refund",
     priority: "medium",

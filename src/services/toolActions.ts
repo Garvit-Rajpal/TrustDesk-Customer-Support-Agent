@@ -24,6 +24,8 @@ import { computeEligibilityFacts } from "./eligibility.js";
 import { getCustomerById } from "../db/repos/customersRepo.js";
 import { getOrderById } from "../db/repos/ordersRepo.js";
 import { getTicketById } from "../db/repos/ticketsRepo.js";
+import { toolExecutionScan } from "./guardrails/toolExecutionScan.js";
+import type { GuardrailResult } from "../domain/schemas.js";
 
 // ---- request (LLD §4.8 validation ladder) ----------------------------
 
@@ -182,7 +184,12 @@ export type ExecuteOutcome =
   | { kind: "illegal_transition"; from: ActionStatus }
   | { kind: "replayed"; action: ToolActionRow }
   | { kind: "executed"; action: ToolActionRow }
-  | { kind: "failed"; action: ToolActionRow };
+  | { kind: "failed"; action: ToolActionRow }
+  // V4-17 (LLD_v4 §6, HLD_v4 ADR-22): distinct from "failed" — the action
+  // row's status stays "approved" (unchanged). A blocked attempt isn't a
+  // terminal failure the way "failed" is, since the blocking condition
+  // (e.g. the ticket reopened) may not recur on a later retry.
+  | { kind: "guardrail_blocked"; action: ToolActionRow; result: GuardrailResult };
 
 // Tools whose effect is contingent on the eligibility facts computed for
 // the draft (LLD §4.2/§4.10: "re-runs eligibility validation... facts were
@@ -200,6 +207,14 @@ export async function executeToolAction(ctx: OrgContext, actionId: string): Prom
   }
   if (action.status !== "approved") {
     return { kind: "illegal_transition", from: action.status };
+  }
+
+  // V4-17: re-validate right before the effect fires — time has passed
+  // since approval, so the catalog/ticket state approved earlier may no
+  // longer hold.
+  const executionScan = await toolExecutionScan(ctx, action);
+  if (!executionScan.passed) {
+    return { kind: "guardrail_blocked", action, result: executionScan };
   }
 
   if (ELIGIBILITY_GATED_TOOLS.has(action.tool_name)) {

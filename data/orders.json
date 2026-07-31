@@ -88,6 +88,276 @@
     "items": [
       {"sku": "BG-WATCH-04", "name": "BlueWatch Sport", "quantity": 1, "category": "wearable", "final_sale": false}
     ]
+  },
+  {
+    "order_id": "ord_5007",
+    "customer_id": "cus_1001",
+    "status": "delivered",
+    "placed_at": "2025-11-02",
+    "delivered_at": "2025-11-06",
+    "eligible_return_until": "2025-11-13",
+    "total": 6499,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10007",
+    "items": [
+      {"sku": "BG-KITCH-03", "name": "BrewMaster Coffee Grinder", "quantity": 1, "category": "kitchen", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5008",
+    "customer_id": "cus_1001",
+    "status": "in_transit",
+    "placed_at": "2026-07-18",
+    "delivered_at": null,
+    "eligible_return_until": null,
+    "total": 11499,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10008",
+    "items": [
+      {"sku": "BG-WATCH-05", "name": "BlueWatch Pro", "quantity": 1, "category": "wearable", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5009",
+    "customer_id": "cus_1001",
+    "status": "cancelled",
+    "placed_at": "2026-03-10",
+    "delivered_at": null,
+    "eligible_return_until": null,
+    "total": 1899,
+    "currency": "INR",
+    "payment_status": "refunded",
+    "tracking_number": null,
+    "items": [
+      {"sku": "BG-CABLE-02", "name": "FastCharge USB-C Cable 2m", "quantity": 2, "category": "accessory", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5010",
+    "customer_id": "cus_1002",
+    "status": "delivered",
+    "placed_at": "2025-08-14",
+    "delivered_at": "2025-08-18",
+    "eligible_return_until": "2025-08-25",
+    "total": 2199,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10010",
+    "items": [
+      {"sku": "BG-STAND-01", "name": "AdjustaStand Laptop Stand", "quantity": 1, "category": "accessory", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5011",
+    "customer_id": "cus_1002",
+    "status": "delivered",
+    "placed_at": "2026-01-05",
+    "delivered_at": "2026-01-05",
+    "eligible_return_until": null,
+    "total": 3499,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": null,
+    "items": [
+      {"sku": "BG-SOFT-02", "name": "PhotoSuite Pro License", "quantity": 1, "category": "software", "final_sale": true}
+    ]
+  },
+  {
+    "order_id": "ord_5012",
+    "customer_id": "cus_1002",
+    "status": "returned",
+    "placed_at": "2025-12-01",
+    "delivered_at": "2025-12-05",
+    "eligible_return_until": "2025-12-12",
+    "total": 9999,
+    "currency": "INR",
+    "payment_status": "refunded",
+    "tracking_number": "BLUETRK10012",
+    "items": [
+      {"sku": "BG-CAM-03", "name": "HomeCam Outdoor", "quantity": 1, "category": "camera", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5013",
+    "customer_id": "cus_1003",
+    "status": "delivered",
+    "placed_at": "2026-02-12",
+    "delivered_at": "2026-02-16",
+    "eligible_return_until": "2026-02-23",
+    "total": 4299,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10013",
+    "items": [
+      {"sku": "BG-GAME-01", "name": "PlayEdge Wireless Controller", "quantity": 1, "category": "gaming", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5014",
+    "customer_id": "cus_1003",
+    "status": "processing",
+    "placed_at": "2026-07-25",
+    "delivered_at": null,
+    "eligible_return_until": null,
+    "total": 7999,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": null,
+    "items": [
+      {"sku": "BG-CAM-04", "name": "HomeCam Doorbell", "quantity": 1, "category": "camera", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5015",
+    "customer_id": "cus_1003",
+    "status": "refunded",
+    "placed_at": "2025-09-20",
+    "delivered_at": "2025-09-24",
+    "eligible_return_until": "2025-10-01",
+    "total": 3299,
+    "currency": "INR",
+    "payment_status": "refunded",
+    "tracking_number": "BLUETRK10015",
+    "items": [
+      {"sku": "BG-FIT-01", "name": "FitTrack Band", "quantity": 1, "category": "fitness", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5016",
+    "customer_id": "cus_1004",
+    "status": "delivered",
+    "placed_at": "2025-10-30",
+    "delivered_at": "2025-11-03",
+    "eligible_return_until": "2025-11-10",
+    "total": 28999,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10016",
+    "items": [
+      {"sku": "BG-TAB-11", "name": "BlueTab 11 Plus", "quantity": 1, "category": "tablet", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5017",
+    "customer_id": "cus_1004",
+    "status": "in_transit",
+    "placed_at": "2026-07-10",
+    "delivered_at": null,
+    "eligible_return_until": null,
+    "total": 1299,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10017",
+    "items": [
+      {"sku": "BG-SLEEVE-01", "name": "Tablet Sleeve 11-inch", "quantity": 1, "category": "accessory", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5018",
+    "customer_id": "cus_1004",
+    "status": "delivered",
+    "placed_at": "2026-04-02",
+    "delivered_at": "2026-04-05",
+    "eligible_return_until": "2026-04-12",
+    "total": 1799,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10018",
+    "items": [
+      {"sku": "BG-HOME-01", "name": "SmartPlug Mini", "quantity": 2, "category": "home", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5019",
+    "customer_id": "cus_1005",
+    "status": "delivered",
+    "placed_at": "2024-03-14",
+    "delivered_at": "2024-03-18",
+    "eligible_return_until": "2024-03-25",
+    "total": 7499,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10019",
+    "items": [
+      {"sku": "BG-AIRPODS-02", "name": "BlueBuds Air Pro", "quantity": 1, "category": "audio", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5020",
+    "customer_id": "cus_1005",
+    "status": "delivered",
+    "placed_at": "2025-01-22",
+    "delivered_at": "2025-01-26",
+    "eligible_return_until": "2025-02-02",
+    "total": 9299,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10020",
+    "items": [
+      {"sku": "BG-KITCH-04", "name": "BlendPro 900 Blender", "quantity": 1, "category": "kitchen", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5021",
+    "customer_id": "cus_1005",
+    "status": "cancelled",
+    "placed_at": "2025-07-08",
+    "delivered_at": null,
+    "eligible_return_until": null,
+    "total": 12499,
+    "currency": "INR",
+    "payment_status": "refunded",
+    "tracking_number": null,
+    "items": [
+      {"sku": "BG-WATCH-04", "name": "BlueWatch Sport", "quantity": 1, "category": "wearable", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5022",
+    "customer_id": "cus_1005",
+    "status": "delivered",
+    "placed_at": "2026-05-30",
+    "delivered_at": "2026-06-02",
+    "eligible_return_until": "2026-06-09",
+    "total": 5999,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10022",
+    "items": [
+      {"sku": "BG-BAG-01", "name": "TravelPro Laptop Backpack", "quantity": 1, "category": "accessory", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5023",
+    "customer_id": "cus_1006",
+    "status": "in_transit",
+    "placed_at": "2026-07-15",
+    "delivered_at": null,
+    "eligible_return_until": null,
+    "total": 6299,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10023",
+    "items": [
+      {"sku": "BG-GAME-02", "name": "PlayEdge Racing Wheel", "quantity": 1, "category": "gaming", "final_sale": false}
+    ]
+  },
+  {
+    "order_id": "ord_5024",
+    "customer_id": "cus_1006",
+    "status": "delivered",
+    "placed_at": "2025-04-19",
+    "delivered_at": "2025-04-23",
+    "eligible_return_until": "2025-04-30",
+    "total": 10999,
+    "currency": "INR",
+    "payment_status": "paid",
+    "tracking_number": "BLUETRK10024",
+    "items": [
+      {"sku": "BG-CAM-02", "name": "HomeCam Mini", "quantity": 1, "category": "camera", "final_sale": false}
+    ]
   }
 ]
 

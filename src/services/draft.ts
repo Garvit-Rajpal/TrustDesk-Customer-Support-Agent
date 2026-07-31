@@ -12,7 +12,11 @@ import { inputScan } from "./guardrails/inputScan.js";
 import { outputScan } from "./guardrails/outputScan.js";
 import { ESCALATION_TEMPLATE_BODY } from "./guardrails/templates/escalation.js";
 import { DRAFT_SYSTEM_PROMPT, buildDraftUserPrompt } from "./prompts/draft.v1.js";
-import { buildBroadQueryText, searchDocuments } from "./retrieval.js";
+import { buildBroadQueryText, searchDocuments, searchSimilarResolutions } from "./retrieval.js";
+import type { EmbeddingAdapter } from "../adapters/embeddingAdapter.js";
+import { semanticJudgeScan } from "./guardrails/semanticJudge.js";
+import { orgPolicyScan } from "./guardrails/orgPolicyScan.js";
+import { getOrgById } from "../db/repos/orgsRepo.js";
 import { computeEligibilityFacts } from "./eligibility.js";
 import { getKbDocumentById, listKbDocuments } from "../db/repos/kbDocumentsRepo.js";
 import { listToolCatalog } from "../db/repos/toolCatalogRepo.js";
@@ -67,7 +71,18 @@ export async function generateDraft(
   modelAdapter: ModelAdapter,
   ticket: Ticket,
   customer: Customer,
-  order: Order | null
+  order: Order | null,
+  // V4-13 (LLD_v4 §5, HLD_v4 ADR-21): optional, deliberately never passed
+  // by the eval runner — eval-run prompts (and therefore scoring) stay
+  // exactly as before W15, unaffected by whatever similarity state happens
+  // to exist in a given environment.
+  embeddingAdapter?: EmbeddingAdapter,
+  // V4-15 (LLD_v4 §6, HLD_v4 ADR-22): optional, same "deliberately never
+  // passed by the eval runner / direct-call tests unless they opt in" shape
+  // as embeddingAdapter above — buildTicketsRouter always supplies one for
+  // the real app (reusing the primary modelAdapter, distinguished by the
+  // ":judge" scenario suffix, same idiom triage/draft already share).
+  judgeModelAdapter?: ModelAdapter
 ): Promise<DraftOutcome> {
   const startedAt = Date.now();
   const runId = newRunId();
@@ -121,6 +136,23 @@ export async function generateDraft(
     counts: { documents: retrievedDocIds.length },
   });
 
+  // V4-13: best-effort, same resilience posture as W15's ingestion hook — a
+  // down embedding provider degrades to "no similarity context" rather than
+  // failing draft generation.
+  let similarResolutions: string[] = [];
+  if (embeddingAdapter) {
+    try {
+      similarResolutions = await searchSimilarResolutions(
+        ctx,
+        embeddingAdapter,
+        `${ticket.subject} ${latestInboundBody}`,
+        triage.category
+      );
+    } catch (err) {
+      console.warn(`[trustdesk] similar-resolution search failed for ${ticket.ticket_id}:`, err);
+    }
+  }
+
   await pipelineEventBus.emitStage(runId, "eligibility", "started");
   const facts = computeEligibilityFacts(ticket.created_at, order, customer);
   await pipelineEventBus.emitStage(runId, "eligibility", "completed");
@@ -140,7 +172,8 @@ export async function generateDraft(
     retrievedDocs,
     facts,
     flags,
-    toolCatalog
+    toolCatalog,
+    similarResolutions
   );
 
   let raw = "";
@@ -207,19 +240,47 @@ export async function generateDraft(
       ticketCategory: triage.category,
       toolCatalog,
     });
-    l3Results = scan.results;
+    // V4-16: org policy-pack rule layer runs alongside outputScan() —
+    // strictly scoped to this ticket's own org's vertical (never a sibling
+    // org's rules), a failure from either feeds the same fail-closed
+    // substitution below (LLD_v4 §6).
+    const org = await getOrgById(ctx.org_id);
+    const orgPolicyResults = org ? orgPolicyScan(parsed, org.vertical) : [];
+    const orgPolicyPassed = orgPolicyResults.every((r) => r.passed);
+    l3Results = [...scan.results, ...orgPolicyResults];
+    const overallPassed = scan.passed && orgPolicyPassed;
     const l3FailedCount = l3Results.filter((r) => !r.passed).length;
-    await pipelineEventBus.emitStage(runId, "output_scan", scan.passed ? "completed" : "blocked", {
+    await pipelineEventBus.emitStage(runId, "output_scan", overallPassed ? "completed" : "blocked", {
       counts: { passed: l3Results.length - l3FailedCount, failed: l3FailedCount },
     });
 
-    if (!scan.passed) {
+    if (!overallPassed) {
       status = "guardrail_blocked";
       resultBody = ESCALATION_TEMPLATE_BODY;
       resultCitations = [];
       resultResolutionType = "escalated";
       sanitizedActions = [];
       rejectedOutput = parsed;
+    } else if (judgeModelAdapter) {
+      // V4-15: L3 passed — run the semantic judge next. A failing verdict
+      // reuses this exact same fail-closed substitution point rather than
+      // inventing a second disposal path (LLD_v4 §6).
+      const judgeResult = await semanticJudgeScan(judgeModelAdapter, ticket, parsed);
+      l3Results = [...l3Results, judgeResult];
+      if (!judgeResult.passed) {
+        status = "guardrail_blocked";
+        resultBody = ESCALATION_TEMPLATE_BODY;
+        resultCitations = [];
+        resultResolutionType = "escalated";
+        sanitizedActions = [];
+        rejectedOutput = parsed;
+      } else {
+        status = "completed";
+        resultBody = parsed.body;
+        resultCitations = parsed.citations;
+        resultResolutionType = parsed.resolution_type;
+        sanitizedActions = scan.sanitizedActions;
+      }
     } else {
       status = "completed";
       resultBody = parsed.body;

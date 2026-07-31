@@ -52,6 +52,20 @@ export async function insertDraft(ctx: OrgContext, draft: NewDraft): Promise<Dra
   return rows[0];
 }
 
+// V4-12 (LLD_v4 §5, HLD_v4 ADR-21): resolveTicket()'s embedding-ingestion
+// hook — the most recent sent draft is what actually reached the customer,
+// so it's what gets embedded as the ticket's "resolution."
+export async function getLatestSentDraftByTicketId(ctx: OrgContext, ticketId: string): Promise<DraftRow | null> {
+  const { rows } = await pool.query(
+    `SELECT draft_id, ticket_id, run_id, status, resolution_type, body, citations,
+            recommended_actions, message_id, created_at::text
+     FROM drafts WHERE ticket_id = $1 AND org_id = $2 AND status = 'sent'
+     ORDER BY created_at DESC LIMIT 1`,
+    [ticketId, ctx.org_id]
+  );
+  return rows[0] ?? null;
+}
+
 // V2-4 (LLD_v2 §5): POST /drafts/:id/send moves a draft to 'sent' — the
 // only status transition on drafts driven by v2 code (the others —
 // edited/approved/rejected — remain unused, same as v1).
