@@ -1,4 +1,4 @@
-# TrustDesk
+# TrustDesk-Customer-Support-Agent
 
 An AI support-operations platform: ticket triage, retrieval-grounded draft
 replies with citations, a layered guardrail pipeline (13 checks across
