@@ -73,6 +73,7 @@ export function Documents({ role }: { role: Role }) {
 
         {error && <p className="error">{error}</p>}
 
+        <div className="overflow-x-auto">
         <table className="queue-table">
           <thead>
             <tr>
@@ -95,6 +96,7 @@ export function Documents({ role }: { role: Role }) {
             ))}
           </tbody>
         </table>
+        </div>
 
         {/* V2-2 (LLD_v2 §3): document ingestion is admin-only. */}
         {role === "admin" && (

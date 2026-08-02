@@ -125,12 +125,6 @@ button:disabled {
   background: #eef2ff;
 }
 
-.context-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin: 1rem 0;
-}
 
 .json-panel {
   background: #f0f0f0;
@@ -143,6 +137,7 @@ button:disabled {
 
 .actions-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin: 1rem 0;
 }
@@ -308,14 +303,26 @@ button:disabled {
 
 .documents-layout {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
+  grid-template-columns: 1fr;
   gap: 1.5rem;
   align-items: start;
 }
 
+@media (min-width: 768px) {
+  .documents-layout {
+    grid-template-columns: 1.2fr 1fr;
+  }
+}
+
 .documents-detail-pane {
-  position: sticky;
-  top: 1rem;
+  position: static;
+}
+
+@media (min-width: 768px) {
+  .documents-detail-pane {
+    position: sticky;
+    top: 1rem;
+  }
 }
 
 .doc-content {
@@ -366,11 +373,12 @@ button:disabled {
 
 .ingest-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
 }
 
 .ingest-row label {
-  flex: 1;
+  flex: 1 1 160px;
 }
 
 .feedback-control {

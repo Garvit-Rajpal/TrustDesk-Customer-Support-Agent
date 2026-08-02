@@ -254,7 +254,7 @@ export function TicketView({
         </div>
       </details>
 
-      <div className="context-grid grid gap-4 md:grid-cols-2">
+      <div className="my-4 grid gap-4 md:grid-cols-2">
         <CustomerCard customer={customer} />
         {order ? <OrderCard order={order} /> : (
           <div className="rounded-ds-lg border border-ds-border bg-ds-surface p-4 text-sm text-ds-text-muted shadow-sm">

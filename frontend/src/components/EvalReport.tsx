@@ -68,6 +68,7 @@ export function EvalReport({ role }: { role: Role }) {
             </tbody>
           </table>
 
+          <div className="overflow-x-auto">
           <table className="queue-table">
             <thead>
               <tr>
@@ -92,6 +93,7 @@ export function EvalReport({ role }: { role: Role }) {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </div>
