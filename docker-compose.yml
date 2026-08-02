@@ -13,6 +13,56 @@ services:
     volumes:
       - trustdesk_pg_data:/var/lib/postgresql/data
       - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trustdesk -d trustdesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Full containerized stack — `docker compose up --build` alone gets you a
+  # working demo at http://localhost:8080 with zero other setup (migrations
+  # + a one-time seed run automatically, see docker-entrypoint.sh). Every
+  # model/embedding/email adapter defaults to its mock tier here, so this
+  # never needs an OpenRouter key, a local Ollama instance, or a real email
+  # provider — fully self-contained. Override via a top-level `.env` file
+  # (docker compose reads it automatically) or `environment:` below.
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://trustdesk:trustdesk@postgres:5432/trustdesk
+      DATABASE_URL_TEST: postgres://trustdesk:trustdesk@postgres:5432/trustdesk_test
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      PORT: 3000
+      MODEL_TIER: ${MODEL_TIER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+      MODEL_NAME: ${MODEL_NAME:-openrouter/auto}
+      EMBEDDING_TIER: ${EMBEDDING_TIER:-mock}
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY:-}
+      EMBEDDINGS_BASE_URL: ${EMBEDDINGS_BASE_URL:-}
+      EMAIL_TIER: ${EMAIL_TIER:-mock}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-TrustDesk <no-reply@trustdesk.example>}
+      # The externally-reachable frontend URL — embedded in magic-link
+      # emails. Must match wherever a real browser can actually reach the
+      # frontend container's mapped port, not the internal service name.
+      PORTAL_BASE_URL: ${PORTAL_BASE_URL:-http://localhost:8080}
+    ports:
+      - "3000:3000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
 
 volumes:
   trustdesk_pg_data:

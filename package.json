@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.6.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -13,6 +13,7 @@
     "migrate": "tsx scripts/migrate.ts",
     "migrate:test": "tsx scripts/migrate.ts --test",
     "seed": "tsx src/db/seed.ts",
+    "seed:if-empty": "tsx scripts/seedIfEmpty.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",

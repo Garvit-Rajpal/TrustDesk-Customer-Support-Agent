@@ -1,4 +1,6 @@
 flowchart TD
+    LEGEND["GUARDRAIL CHECK INVENTORY (verified against code, not estimated)<br/>L1 input scan - 3 checks: injection_phrase, secret_extraction, verification_bypass<br/>L2 prompt structure - 1 check: delimited_untrusted_block (always passes by construction)<br/>L3 output scan - 6 checks: citation_subset, internal_leak, secret_leak,<br/>internal_register_leak, unrelated_customer, action_validity<br/>Org policy pack - 2 checks per vertical (retail/software/finance all have exactly 2)<br/>Semantic judge - 1 check: judge_verdict (only runs if L3+org-policy already passed)<br/>= 13 checks total for a fully-passing draft_reply run (3 input-side + 10 output/policy/judge-side)<br/>Tool-execution-time scan - 1 check: execute_time_revalidation (separate layer, only at execute)"]
+
     A[Ticket opened - status: open<br/>first inbound message in thread<br/>system greeting appended immediately] --> B0
     PORTAL[Customer chat portal - manual verify<br/>POST /customer-auth/verify - lightweight<br/>email+order/ticket check, no password<br/>issues CustomerToken, kind:customer, no Role<br/>1h expiry] -->|WS /customer-chat<br/>ticketIntake.ts shared with POST /tickets| A
     PORTAL -->|existing ticket_id in token<br/>stateless reconnect: replay ticket_messages| B0
@@ -10,7 +12,7 @@ flowchart TD
 
     RETURN[NEW v5: returning customer with<br/>valid stored CustomerToken - either kind -<br/>skips both verify forms entirely] --> B0
 
-    B0[Guardrail L1 - eager scan<br/>runs at message-insert time<br/>simulateInbound / receiveCustomerMessage<br/>closes the v3 ADR-15 gap] --> B[Guardrail L1: input scan<br/>still also runs per-pipeline-trigger<br/>flags force should_escalate, never blocks]
+    B0[Guardrail L1 - eager scan, 3 checks<br/>runs at message-insert time<br/>simulateInbound / receiveCustomerMessage<br/>closes the v3 ADR-15 gap] --> B[Guardrail L1: input scan - same 3 checks<br/>injection_phrase, secret_extraction, verification_bypass<br/>still also runs per-pipeline-trigger<br/>flags force should_escalate, never blocks]
     B --> HO{Ticket already<br/>human_owned?}
 
     HO -->|yes: human took over earlier| HR[Agent composes a manual reply<br/>POST /tickets/:id/messages/reply<br/>bypasses the AI pipeline entirely]
@@ -26,13 +28,14 @@ flowchart TD
     D0 --> D[Retrieval - org-scoped FTS<br/>filtered by triage category]
     D --> E[Eligibility facts - code, not LLM<br/>ticket.created_at vs policy windows]
     E --> F[Draft generation targets latest inbound msg<br/>context: thread history + similarity snippets<br/>+ facts + docs, each fenced as untrusted data]
-    F --> G[Guardrail L3: output scan<br/>+ org-aware unrelated-customer check]
-    G --> G1[Guardrail - semantic judge<br/>second, cheaper-tier model call<br/>generic rubric: scope, commitments, tone]
-    G1 --> G2[Guardrail - org policy-pack rules<br/>src/policy_packs/{vertical}/guardrail_rules.json<br/>declarative, reuses outputScan pattern-match]
-    G2 -->|any layer fails| G3[Fail closed: template draft substituted<br/>rejected output kept, manager-visible only<br/>same single substitution point since v1]
-    G2 -->|all pass| H[Draft saved: resolution_type + citations<br/>+ catalog-validated recommended actions]
+    F --> G[Guardrail L3: output scan - 6 checks<br/>citation_subset, internal_leak, secret_leak,<br/>internal_register_leak, unrelated_customer, action_validity]
+    G --> G2[Guardrail - org policy-pack rules - 2 checks<br/>src/policy_packs/vertical/guardrail_rules.json<br/>declarative, reuses outputScan pattern-match<br/>runs alongside L3, same fail-closed disposal]
+    G2 -->|L3 or org-policy failed -<br/>semantic judge never runs| G3[Fail closed: template draft substituted<br/>rejected output kept, manager-visible only<br/>same single substitution point since v1<br/>guardrail_results total: 3+1+6+2 = 12]
+    G2 -->|both passed| G1[Guardrail - semantic judge - 1 check<br/>second, cheaper-tier model call<br/>generic rubric: scope, commitments, tone<br/>conditional: only reached if L3+org-policy already passed]
+    G1 -->|fails| G3
+    G1 -->|passes| H[Draft saved: resolution_type + citations<br/>+ catalog-validated recommended actions<br/>guardrail_results total: 3+1+6+2+1 = 13]
     G3 --> H
-    H --> T2[(agent_run + run_events<br/>guardrail_results: input_scan, output_scan,<br/>semantic_judge, org_policy)]
+    H --> T2[(agent_run + run_events<br/>guardrail_results: input_scan x3, prompt_structure x1,<br/>output_scan x6, org_policy x2, semantic_judge x0-1<br/>12 checks if judge never reached, 13 if it did)]
     H --> AS{evaluateAutoSend -<br/>resolution_type === answered AND<br/>no recommended action requires approval?<br/>deterministic code, not model output}
 
     AS -->|yes| AUTO[Auto-send: sendDraft called immediately<br/>no human click - draft: sent<br/>ticket: awaiting_customer]
@@ -48,7 +51,7 @@ flowchart TD
     P -->|approve| O[approved]
     P -->|reject| Q[rejected - terminal<br/>agent handles manually]
     M -->|no| O
-    O --> R0[Guardrail - tool-execution-time scan<br/>re-checks catalog constraints + ticket still open<br/>right before execute, fail closed]
+    O --> R0[Guardrail - tool-execution-time scan - 1 check<br/>execute_time_revalidation<br/>separate layer from triage/draft's 13 - only runs<br/>right before execute, fail closed]
     R0 -->|fail| R1[guardrail_blocked outcome<br/>action stays approved, retryable]
     R0 -->|pass| R[Execute: re-validate eligibility + idempotent replay<br/>executed or failed]
     I -->|no| S[Agent reviews draft]
