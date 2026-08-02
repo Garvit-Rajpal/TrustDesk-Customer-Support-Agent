@@ -61,6 +61,12 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - backend
+    environment:
+      # nginx.conf.template's proxy target, full scheme+host+port — plain
+      # http here (docker-compose's own DNS); https://<...>.azurecontainer
+      # apps.io when deployed to Azure Container Apps instead, since that
+      # ingress is HTTPS-only (see frontend/nginx.conf.template).
+      BACKEND_ORIGIN: http://backend:3000
     ports:
       - "8080:80"
 

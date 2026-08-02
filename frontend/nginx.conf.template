@@ -1,37 +1,70 @@
 # Mirrors frontend/vite.config.ts's dev-time proxy list exactly, so the
 # built SPA talks to the backend the same same-origin way in every
 # environment — no CORS middleware needed on the backend, no baked-in API
-# base URL needed at build time. `backend` below is the docker-compose
-# service name, resolved via Docker's internal DNS.
+# base URL needed at build time. The proxy target below is substituted by
+# the official nginx image's built-in entrypoint (envsubst against files
+# under /etc/nginx/templates/, see frontend/Dockerfile) before nginx
+# starts, from a BACKEND_ORIGIN container env var. BACKEND_ORIGIN carries
+# the *full* scheme+host+port (not just a host:port) because the scheme
+# genuinely differs by environment: plain http://backend:3000 under Docker
+# Compose, but https://<app>.internal.<env>.<region>.azurecontainerapps.io
+# in Azure Container Apps — ALL Container Apps ingress (internal or
+# external) is HTTPS-only at the edge; a plain-HTTP proxy_pass to it gets
+# rejected. Only variables actually present in the container environment
+# get substituted, so nginx's own $host/$http_upgrade (no braces, not
+# shell env vars) are left untouched. NOTE: this comment block itself is
+# plain text to envsubst too — do not write a literal ${BACKEND_ORIGIN}
+# token in prose here, or it will get silently rewritten along with the
+# real directives below.
 server {
     listen 80;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
 
+    # No explicit `proxy_set_header Host` below (in any of the three
+    # proxying locations): nginx's own default is to forward $proxy_host —
+    # the hostname from proxy_pass's own target, not the client's original
+    # Host — which is exactly what Azure Container Apps' shared ingress
+    # needs to route to the right app. Forwarding the frontend's own Host
+    # here instead (an earlier version of this file did) breaks that
+    # routing in Azure, though it went unnoticed under Docker Compose,
+    # where Host is single-tenant and effectively ignored.
+    #
     # W17 (LLD_v4 §7): the customer-chat WS transport — upgrade headers so
     # nginx proxies the connection upgrade, not just a plain HTTP request.
     location /customer-chat {
-        proxy_pass http://backend:3000;
+        proxy_pass ${BACKEND_ORIGIN};
         proxy_http_version 1.1;
+        proxy_ssl_server_name on;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
     }
 
     # GET /signup is the frontend's own page route (react-router) — only
     # the actual POST /signup API call proxies to the backend, so a hard
     # page load/refresh on /signup still serves the SPA shell.
     location = /signup {
+        # proxy_http_version isn't a permitted directive inside an `if`
+        # block (nginx's well-known restriction on what `if` may contain),
+        # so it's set here at location scope instead — harmless when the
+        # `if` doesn't match and try_files runs instead.
+        proxy_http_version 1.1;
         if ($request_method = POST) {
-            proxy_pass http://backend:3000;
+            proxy_pass ${BACKEND_ORIGIN};
         }
         try_files /index.html =404;
     }
 
+    # proxy_http_version 1.1 matters here specifically for Azure: nginx's
+    # own upstream default is HTTP/1.0, which Azure Container Apps' edge
+    # (Envoy-based) rejects with a bare 426 "Upgrade Required" — harmless
+    # under Docker Compose's plain Express upstream, which tolerates 1.0
+    # fine, but a hard requirement once the upstream is behind Azure's edge.
     location ~ ^/(auth|tickets|documents|agent-runs|tool-actions|eval-runs|users|drafts|metrics|orgs|customers|platform|embeddings|dashboard|customer-auth)(/|$) {
-        proxy_pass http://backend:3000;
-        proxy_set_header Host $host;
+        proxy_pass ${BACKEND_ORIGIN};
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
