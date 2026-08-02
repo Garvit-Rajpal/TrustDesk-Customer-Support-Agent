@@ -46,6 +46,15 @@ export const PERMISSIONS = {
   "platform:metrics:view": ["agent", "manager", "admin"],
   // V3-7 (LLD_v3 §5): dashboard home — same tier as tickets:view.
   "dashboard:view": ["agent", "manager", "admin"],
+  // RAG-pipeline visibility: same role tier as runs:view (an agent can
+  // already see any individual draft's similarity matches via
+  // GET /agent-runs/:runId — this just adds discoverability of the index
+  // those matches are drawn from). Role alone isn't sufficient though — the
+  // route handler additionally enforces org_id === "org_default", same
+  // pattern as platform:*/orgs:consent:manage above, since only org_default
+  // has ever had eval fixtures or a meaningfully large resolution history
+  // to browse in this demo.
+  "embeddings:view": ["agent", "manager", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

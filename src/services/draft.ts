@@ -12,7 +12,7 @@ import { inputScan } from "./guardrails/inputScan.js";
 import { outputScan } from "./guardrails/outputScan.js";
 import { ESCALATION_TEMPLATE_BODY } from "./guardrails/templates/escalation.js";
 import { DRAFT_SYSTEM_PROMPT, buildDraftUserPrompt } from "./prompts/draft.v1.js";
-import { buildBroadQueryText, searchDocuments, searchSimilarResolutions } from "./retrieval.js";
+import { buildBroadQueryText, searchDocuments, searchSimilarResolutions, type SimilarResolutionMatch } from "./retrieval.js";
 import type { EmbeddingAdapter } from "../adapters/embeddingAdapter.js";
 import { semanticJudgeScan } from "./guardrails/semanticJudge.js";
 import { orgPolicyScan } from "./guardrails/orgPolicyScan.js";
@@ -138,11 +138,14 @@ export async function generateDraft(
 
   // V4-13: best-effort, same resilience posture as W15's ingestion hook — a
   // down embedding provider degrades to "no similarity context" rather than
-  // failing draft generation.
-  let similarResolutions: string[] = [];
+  // failing draft generation. The full match objects (not just their text)
+  // are kept so they can be persisted onto this run's agent_runs row below
+  // — RAG-pipeline visibility, migration 1786100000000 — even though the
+  // prompt itself only needs each match's source_text.
+  let similarResolutionMatches: SimilarResolutionMatch[] = [];
   if (embeddingAdapter) {
     try {
-      similarResolutions = await searchSimilarResolutions(
+      similarResolutionMatches = await searchSimilarResolutions(
         ctx,
         embeddingAdapter,
         `${ticket.subject} ${latestInboundBody}`,
@@ -173,7 +176,7 @@ export async function generateDraft(
     facts,
     flags,
     toolCatalog,
-    similarResolutions
+    similarResolutionMatches.map((m) => m.source_text)
   );
 
   let raw = "";
@@ -325,6 +328,7 @@ export async function generateDraft(
     model_provider: modelProvider,
     model_name: modelName,
     latency_ms: Date.now() - startedAt,
+    similar_resolutions: similarResolutionMatches,
   });
 
   return {

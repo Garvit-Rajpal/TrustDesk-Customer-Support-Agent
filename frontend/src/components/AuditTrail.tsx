@@ -44,6 +44,12 @@ const COLUMNS: DataTableColumn<AgentRunSummary>[] = [
   },
   { key: "guardrails", header: "Guardrails", render: (r) => guardrailSummary(r.guardrail_results) },
   {
+    key: "rag",
+    header: "RAG context",
+    render: (r) =>
+      r.similar_resolutions_count > 0 ? `${r.similar_resolutions_count} used` : "—",
+  },
+  {
     key: "model",
     header: "Model",
     render: (r) => (r.model_provider ? `${r.model_provider}/${r.model_name ?? "?"}` : "—"),

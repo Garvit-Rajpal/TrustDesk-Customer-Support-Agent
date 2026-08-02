@@ -1,0 +1,32 @@
+flowchart TD
+    subgraph INGEST["INGESTION - runs only on ticket resolve, not on every draft"]
+        RESOLVE[POST /tickets/:id/resolve<br/>resolveTicket - ticketThread.ts] --> HASDRAFT{Ticket has a<br/>SENT draft?<br/>getLatestSentDraftByTicketId}
+        HASDRAFT -->|no - purely human-typed<br/>manual reply, no draft_id| SKIP[Nothing to embed<br/>skipped silently]
+        HASDRAFT -->|yes - AI-drafted and<br/>auto-sent OR agent-approved| EMBED[embeddingAdapter.embed<br/>draft.body]
+        EMBED --> STORE[(INSERT ticket_resolution_embeddings<br/>org_id, ticket_id, draft_id, category,<br/>resolution_type, source_text, embedding vector768)]
+        STORE -->|best-effort: try/catch,<br/>never fails the resolve action| RESOLVE
+    end
+
+    STORE -->|feeds future searches, org + category scoped| SEARCH
+
+    subgraph RETRIEVE["RETRIEVAL - runs on every draft generation (generateDraft, draft.ts)"]
+        TRIGGER[POST /tickets/:id/draft-reply<br/>manual click OR auto-pipeline after triage] --> KBSEARCH[KB doc search - FTS<br/>org + category scoped<br/>searchDocuments]
+        KBSEARCH --> CITABLE[retrievedDocIds<br/>CITABLE - outputScan checks<br/>the model's citations against this list]
+        TRIGGER --> SEARCH[Similarity search - pgvector<br/>org + category scoped, cosine distance<br/>searchSimilarResolutions, top 3]
+        SEARCH --> MATCHES[SimilarResolutionMatch array<br/>embedding_id, ticket_id, distance, source_text]
+        MATCHES -->|context only, never citable| PROMPT["draft prompt's SIMILAR PAST<br/>RESOLUTIONS block (data, not<br/>instructions - same fenced-block<br/>rule as every other untrusted input)"]
+        MATCHES --> PERSIST[(UPDATE this run's own agent_runs row<br/>similar_resolutions column<br/>migration 1786100000000)]
+        SEARCH -->|best-effort: try/catch - embedding<br/>provider down degrades to no similarity<br/>context, draft still generates| TRIGGER
+    end
+
+    PROMPT --> MODEL[Model call - triage/draft<br/>same production pipeline eval uses]
+    MODEL --> SENT[If auto-sent or agent-approved:<br/>draft becomes a real sent reply]
+    SENT -->|eventually, when THIS ticket<br/>is itself resolved| RESOLVE
+
+    subgraph VISIBLE["FRONTEND VISIBILITY - both new"]
+        PERSIST --> TRACEPANEL["TracePanel - per-run drill-down<br/>'Similar past resolutions used' section<br/>GET /agent-runs/:runId"]
+        PERSIST --> AUDITCOL["Audit Trail list - 'RAG context' column<br/>count only, GET /agent-runs"]
+        STORE --> EMBEDPAGE["Embeddings page - the index itself<br/>GET /embeddings, org_default ONLY<br/>403 for every other org"]
+    end
+
+    NOTE["Eval runs (evalRunner.ts) call generateDraft/runTriage directly, never<br/>resolveTicket - eval_case runs exercise the RETRIEVAL half above (their<br/>drafts can retrieve real past resolutions) but structurally can NEVER<br/>write to the INGESTION half - no eval fixture is ever embedded into the<br/>similarity index (invariant #4's spirit). Eval report itself is also now<br/>org_default only, same restriction as this page."]

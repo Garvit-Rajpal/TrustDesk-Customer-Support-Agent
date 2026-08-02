@@ -96,6 +96,11 @@ const ROUTE_CASES: RouteCase[] = [
     request: (t) => request(app).get("/agent-runs").set("Authorization", `Bearer ${t}`),
   },
   {
+    name: "GET /embeddings",
+    allowedRoles: ["agent", "manager", "admin"],
+    request: (t) => request(app).get("/embeddings").set("Authorization", `Bearer ${t}`),
+  },
+  {
     name: "GET /documents",
     allowedRoles: ["agent", "manager", "admin"],
     request: (t) => request(app).get("/documents").set("Authorization", `Bearer ${t}`),

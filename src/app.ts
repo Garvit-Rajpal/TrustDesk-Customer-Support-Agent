@@ -12,6 +12,7 @@ import { metricsRouter } from "./api/routes/metrics.js";
 import { orgsRouter } from "./api/routes/orgs.js";
 import { customersRouter } from "./api/routes/customers.js";
 import { platformRouter } from "./api/routes/platform.js";
+import { embeddingsRouter } from "./api/routes/embeddings.js";
 import { dashboardRouter } from "./api/routes/dashboard.js";
 import { signupRouter } from "./api/routes/signup.js";
 import { buildCustomerAuthRouter } from "./api/routes/customerAuth.js";
@@ -78,6 +79,11 @@ export function buildApp(
   // they're org_default) — the handlers below construct a second, separate
   // OrgContext for the target org they're reading, on purpose.
   app.use("/platform", authMiddleware, tenancyMiddleware, platformRouter);
+  // RAG-pipeline visibility: org_default-only, same tenancy shape as
+  // /platform above (tenancyMiddleware still runs so req.orgContext is
+  // populated to check against, the route itself enforces the narrower
+  // org_default restriction).
+  app.use("/embeddings", authMiddleware, tenancyMiddleware, embeddingsRouter);
   app.use("/dashboard", authMiddleware, tenancyMiddleware, dashboardRouter);
 
   app.use(errorHandler);

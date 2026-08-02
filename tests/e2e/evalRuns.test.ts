@@ -19,9 +19,9 @@ describe("eval-runs API", () => {
     token = login.body.data.token;
   });
 
-  afterAll(async () => {
-    await pool.end();
-  });
+  // pool.end() is deferred to the last describe block in this file (below)
+  // — both share the same file-level pool import, and a second pool.end()
+  // call throws.
 
   it("401s without a token", async () => {
     const res = await request(app).post("/eval-runs");
@@ -116,5 +116,81 @@ describe("eval-runs API", () => {
         .set("Authorization", `Bearer ${token}`);
       expect(fetched.status).toBe(200);
     });
+  });
+});
+
+// RAG-pipeline visibility follow-up: evalRunner.ts's EVAL_ORG is hardcoded
+// to org_default (eval fixtures only reference org_default's seeded
+// tickets), but nothing on this router previously stopped a *different*
+// org's admin from calling these routes — runEvalSet() would still run
+// against org_default's real data and hand it back in the response body.
+// Same 403 shape platformSupport.test.ts already asserts for /platform/*.
+describe("eval-runs API is restricted to org_default (RAG-pipeline visibility follow-up)", () => {
+  let defaultAdminToken: string;
+  let softwareAdminToken: string;
+
+  beforeAll(async () => {
+    await truncateAll();
+    await runSeed();
+    const login = await request(app).post("/auth/login").send({ username: "admin1", password: "admin123" });
+    defaultAdminToken = login.body.data.token;
+
+    const createOrg = await request(app)
+      .post("/orgs")
+      .set("Authorization", `Bearer ${defaultAdminToken}`)
+      .send({
+        name: "Acme Software",
+        vertical: "software",
+        admin_username: "acme_admin_eval",
+        admin_password: "acmeadminpw",
+        admin_display_name: "Acme Admin",
+      });
+    expect(createOrg.status).toBe(201);
+    const softwareLogin = await request(app)
+      .post("/auth/login")
+      .send({ username: "acme_admin_eval", password: "acmeadminpw" });
+    softwareAdminToken = softwareLogin.body.data.token;
+  });
+
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  it("403s POST /eval-runs/start for a non-default org's admin", async () => {
+    const res = await request(app).post("/eval-runs/start").set("Authorization", `Bearer ${softwareAdminToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("403s POST /eval-runs for a non-default org's admin — never reads org_default's real ticket data", async () => {
+    const res = await request(app).post("/eval-runs").set("Authorization", `Bearer ${softwareAdminToken}`).send({});
+    expect(res.status).toBe(403);
+  });
+
+  it("403s GET /eval-runs/:id for a non-default org's admin", async () => {
+    const started = await request(app)
+      .post("/eval-runs/start")
+      .set("Authorization", `Bearer ${defaultAdminToken}`);
+    const res = await request(app)
+      .get(`/eval-runs/${started.body.data.eval_run_id}`)
+      .set("Authorization", `Bearer ${softwareAdminToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("403s GET /eval-runs/:runId/events for a non-default org's admin", async () => {
+    const started = await request(app)
+      .post("/eval-runs/start")
+      .set("Authorization", `Bearer ${defaultAdminToken}`);
+    const res = await request(app)
+      .get(`/eval-runs/${started.body.data.eval_run_id}/events`)
+      .set("Authorization", `Bearer ${softwareAdminToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("org_default's own admin is unaffected", async () => {
+    const res = await request(app)
+      .post("/eval-runs")
+      .set("Authorization", `Bearer ${defaultAdminToken}`)
+      .send({ case_ids: ["eval_001"] });
+    expect(res.status).toBe(201);
   });
 });

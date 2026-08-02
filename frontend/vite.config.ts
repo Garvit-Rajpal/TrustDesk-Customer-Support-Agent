@@ -26,6 +26,7 @@ export default defineConfig({
         bypass: (req) => (req.method === "GET" ? req.url : undefined),
       },
       "/platform": "http://localhost:3000",
+      "/embeddings": "http://localhost:3000",
       "/dashboard": "http://localhost:3000",
       // W17 (LLD_v4 §7): public customer-ownership verification.
       "/customer-auth": "http://localhost:3000",

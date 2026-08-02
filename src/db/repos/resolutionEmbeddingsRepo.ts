@@ -79,3 +79,46 @@ export async function findSimilarResolutions(
   );
   return rows.map((row) => ({ ...row, distance: Number(row.distance) }));
 }
+
+export interface ResolutionEmbeddingListRow {
+  embedding_id: string;
+  ticket_id: string;
+  draft_id: string;
+  category: string;
+  resolution_type: string;
+  source_text: string;
+  created_at: string;
+  ticket_subject: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+}
+
+// RAG-pipeline visibility: the embedding index itself (frontend
+// EmbeddingIndex.tsx, GET /embeddings, org_default only — see
+// src/api/routes/embeddings.ts) — every row ingestResolutionEmbedding()
+// (ticketThread.ts) has ever written for this org, most recent first,
+// joined out to the ticket/customer it came from. Deliberately doesn't
+// return the raw `embedding` vector itself (768 floats, meaningless to a
+// human reader) — only what a reviewer actually wants: which resolution
+// got indexed, when, and from what ticket.
+export async function listResolutionEmbeddings(
+  ctx: OrgContext,
+  limit = 200
+): Promise<ResolutionEmbeddingListRow[]> {
+  const { rows } = await pool.query(
+    `SELECT
+       re.embedding_id, re.ticket_id, re.draft_id, re.category, re.resolution_type,
+       re.source_text, re.created_at::text,
+       t.subject AS ticket_subject,
+       t.customer_id,
+       c.name AS customer_name
+     FROM ticket_resolution_embeddings re
+     LEFT JOIN tickets t ON re.ticket_id = t.ticket_id
+     LEFT JOIN customers c ON t.customer_id = c.customer_id
+     WHERE re.org_id = $1
+     ORDER BY re.created_at DESC
+     LIMIT $2`,
+    [ctx.org_id, limit]
+  );
+  return rows;
+}

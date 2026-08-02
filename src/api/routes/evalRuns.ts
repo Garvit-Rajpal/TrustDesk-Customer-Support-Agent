@@ -1,4 +1,4 @@
-import { Router, type Response } from "express";
+import { Router, type Request, type Response } from "express";
 import type { ModelAdapter } from "../../adapters/modelAdapter.js";
 import { RunEvalRequest } from "../../domain/evalRunTypes.js";
 import { newEvalRunId } from "../../domain/ids.js";
@@ -9,6 +9,26 @@ import { isTerminalEvent, pipelineEventBus } from "../../services/events/pipelin
 import type { RunEvent } from "../../domain/schemas.js";
 import { sendError } from "../errorEnvelope.js";
 import { requirePermission } from "../middleware/permissions.js";
+
+// RAG-pipeline visibility follow-up: evalRunner.ts's EVAL_ORG is hardcoded
+// to org_default (eval fixtures only ever reference org_default's seeded
+// tickets) — but until now nothing on this router enforced that the
+// *caller* was also org_default. A non-default org's admin calling
+// POST /eval-runs could already read org_default's real ticket/customer/
+// draft content back in the synchronous response (runEvalSet() always
+// operates against EVAL_ORG regardless of req.orgContext), and the
+// resulting eval_runs row always landed under org_default's own history
+// regardless of who triggered it — a real cross-tenant exposure, not just
+// a missing UI restriction. Same enforcement shape as POST /orgs
+// (orgs.ts) and /platform/* (platform.ts): permission alone isn't
+// sufficient, the route itself also checks org_id === "org_default".
+function requireOrgDefault(req: Request, res: Response): boolean {
+  if (req.orgContext!.org_id !== "org_default") {
+    sendError(res, "FORBIDDEN", "Only org_default may run or view evals");
+    return false;
+  }
+  return true;
+}
 
 // Factory so tests can inject a scenario-specific MockModelAdapter, same
 // pattern as buildTicketsRouter (LLD §1: MockModelAdapter in every test).
@@ -21,6 +41,7 @@ export function buildEvalRunsRouter(modelAdapter: ModelAdapter): Router {
   // the run itself, without the SSE route racing the run's first event.
   evalRunsRouter.post("/start", requirePermission("eval_runs:run"), async (req, res, next) => {
     try {
+      if (!requireOrgDefault(req, res)) return;
       const evalRunId = newEvalRunId();
       await insertPendingEvalRun(req.orgContext!, { eval_run_id: evalRunId, started_at: new Date().toISOString() });
       res.status(201).json({ data: { eval_run_id: evalRunId } });
@@ -35,6 +56,7 @@ export function buildEvalRunsRouter(modelAdapter: ModelAdapter): Router {
   // supplied (from POST /eval-runs/start), the runner reuses it.
   evalRunsRouter.post("/", requirePermission("eval_runs:run"), async (req, res, next) => {
     try {
+      if (!requireOrgDefault(req, res)) return;
       const parsed = RunEvalRequest.safeParse(req.body ?? {});
       if (!parsed.success) {
         sendError(res, "VALIDATION_ERROR", "Invalid eval-run request", parsed.error.flatten());
@@ -51,6 +73,7 @@ export function buildEvalRunsRouter(modelAdapter: ModelAdapter): Router {
 
   evalRunsRouter.get("/:id", requirePermission("runs:view"), async (req, res, next) => {
     try {
+      if (!requireOrgDefault(req, res)) return;
       const run = await getEvalRunById(req.orgContext!, req.params.id);
       if (!run) {
         sendError(res, "NOT_FOUND", `Eval run ${req.params.id} not found`);
@@ -69,6 +92,7 @@ export function buildEvalRunsRouter(modelAdapter: ModelAdapter): Router {
   // already documents for run_events).
   evalRunsRouter.get("/:runId/events", requirePermission("runs:view"), async (req, res, next) => {
     try {
+      if (!requireOrgDefault(req, res)) return;
       const persisted = await listRunEventsByRunId(req.params.runId);
       const run = await getEvalRunById(req.orgContext!, req.params.runId);
       if (!run && persisted.length === 0) {

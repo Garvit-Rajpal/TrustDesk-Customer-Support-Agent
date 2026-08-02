@@ -68,5 +68,19 @@ describe("similar-resolution retrieval reaches the draft prompt (V4-13)", () => 
     const userPrompt = (draftCall![0] as { userPrompt: string }).userPrompt;
     expect(userPrompt).toContain("SIMILAR PAST RESOLUTIONS");
     expect(userPrompt).toContain(firstDraft.body.data.body);
+
+    // RAG-pipeline visibility (migration 1786100000000): the same match
+    // that reached the prompt above is also persisted on this draft's own
+    // agent_runs row, not just used in-memory and discarded — this is what
+    // TracePanel/the audit trail read to show it in the frontend.
+    const trace = await request(app)
+      .get(`/agent-runs/${secondDraft.body.data.run_id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(trace.body.data.similar_resolutions).toHaveLength(1);
+    expect(trace.body.data.similar_resolutions[0]).toMatchObject({
+      ticket_id: "tkt_9001",
+      source_text: firstDraft.body.data.body,
+    });
+    expect(typeof trace.body.data.similar_resolutions[0].distance).toBe("number");
   });
 });

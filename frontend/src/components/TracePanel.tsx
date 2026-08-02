@@ -95,6 +95,24 @@ export function TracePanel({ runId }: { runId: string | null | undefined }) {
             </div>
           )}
 
+          {trace.similar_resolutions.length > 0 && (
+            <div className="trace-section">
+              <h5>Similar past resolutions used</h5>
+              <p className="muted">
+                Context only, fed into the draft prompt for phrasing consistency — never a citable
+                source (unlike the retrieved documents above).
+              </p>
+              <ul className="guardrail-list">
+                {trace.similar_resolutions.map((m) => (
+                  <li key={m.embedding_id}>
+                    <code>{m.ticket_id}</code> <span className="muted">(distance {m.distance.toFixed(3)})</span>
+                    <div className="muted">{m.source_text}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="trace-section">
             <h5>Guardrail checks</h5>
             {groupByLayer(trace.guardrail_results).map(([layer, results]) => (

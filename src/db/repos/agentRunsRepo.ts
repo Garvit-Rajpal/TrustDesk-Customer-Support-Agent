@@ -2,6 +2,7 @@ import { pool } from "../pool.js";
 import type { GuardrailResult, RunStatus, RunType } from "../../domain/schemas.js";
 import type { CategorizedAgentRun } from "../../services/qualityMetrics.js";
 import type { OrgContext } from "../../domain/orgContext.js";
+import type { SimilarResolutionMatch } from "../../services/retrieval.js";
 
 export interface NewAgentRun {
   run_id: string;
@@ -15,6 +16,10 @@ export interface NewAgentRun {
   model_provider?: string;
   model_name?: string;
   latency_ms?: number;
+  // RAG-pipeline visibility (migration 1786100000000): the similarity
+  // matches searchSimilarResolutions() fed into this draft's prompt as
+  // context — empty for triage runs and any caller that doesn't pass one.
+  similar_resolutions?: SimilarResolutionMatch[];
 }
 
 // ADR-6: every AI run writes this row synchronously, before the API
@@ -23,8 +28,9 @@ export async function insertAgentRun(ctx: OrgContext, run: NewAgentRun): Promise
   await pool.query(
     `INSERT INTO agent_runs
        (run_id, ticket_id, run_type, status, retrieved_doc_ids, tool_calls,
-        guardrail_results, rejected_output, model_provider, model_name, latency_ms, org_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        guardrail_results, rejected_output, model_provider, model_name, latency_ms, org_id,
+        similar_resolutions)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [
       run.run_id,
       run.ticket_id,
@@ -38,6 +44,7 @@ export async function insertAgentRun(ctx: OrgContext, run: NewAgentRun): Promise
       run.model_name ?? null,
       run.latency_ms ?? null,
       ctx.org_id,
+      JSON.stringify(run.similar_resolutions ?? []),
     ]
   );
 }
@@ -55,6 +62,7 @@ export interface AgentRunRow {
   model_name: string | null;
   latency_ms: number | null;
   created_at: string;
+  similar_resolutions: unknown;
 }
 
 // V2-3 (LLD_v2 §4): draft_reply runs only (guardrail_block_rate is about
@@ -75,7 +83,7 @@ export async function getAgentRunById(ctx: OrgContext, runId: string): Promise<A
   const { rows } = await pool.query(
     `SELECT run_id, ticket_id, run_type, status, retrieved_doc_ids, tool_calls,
             guardrail_results, rejected_output, model_provider, model_name,
-            latency_ms, created_at::text
+            latency_ms, created_at::text, similar_resolutions
      FROM agent_runs WHERE run_id = $1 AND org_id = $2`,
     [runId, ctx.org_id]
   );
@@ -100,6 +108,7 @@ export interface AgentRunListRow {
   order_status: string | null;
   order_total: string | null;
   order_currency: string | null;
+  similar_resolutions_count: number;
 }
 
 // New audit-trail listing (frontend AuditTrail.tsx): every agent_runs row
@@ -124,7 +133,8 @@ export async function listAgentRuns(ctx: OrgContext, limit = 200): Promise<Agent
        t.order_id,
        o.status AS order_status,
        o.total::text AS order_total,
-       o.currency AS order_currency
+       o.currency AS order_currency,
+       jsonb_array_length(ar.similar_resolutions) AS similar_resolutions_count
      FROM agent_runs ar
      LEFT JOIN tickets t ON ar.ticket_id = t.ticket_id
      LEFT JOIN customers c ON t.customer_id = c.customer_id

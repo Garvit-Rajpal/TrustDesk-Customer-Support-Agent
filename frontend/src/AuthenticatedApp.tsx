@@ -5,6 +5,7 @@ import { TicketView } from "./components/TicketView.js";
 import { EvalReport } from "./components/EvalReport.js";
 import { Documents } from "./components/Documents.js";
 import { AuditTrail } from "./components/AuditTrail.js";
+import { EmbeddingIndex } from "./components/EmbeddingIndex.js";
 import { Admin } from "./components/Admin.js";
 import { QualityDashboard } from "./components/QualityDashboard.js";
 import { PlatformSupport } from "./components/PlatformSupport.js";
@@ -29,6 +30,7 @@ type View =
   | { name: "eval" }
   | { name: "documents" }
   | { name: "audit" }
+  | { name: "embeddings" }
   | { name: "quality" }
   | { name: "admin" }
   | { name: "platform" };
@@ -70,12 +72,22 @@ export function AuthenticatedApp({ session, onLogout }: { session: Session; onLo
       active: view.name === "documents",
       onClick: () => setView({ name: "documents" }),
     },
-    {
-      key: "eval",
-      label: "Eval report",
-      active: view.name === "eval",
-      onClick: () => setView({ name: "eval" }),
-    },
+    // Eval report: restricted to org_default (canViewPlatform) — the eval
+    // runner only ever operates against org_default's seeded fixtures
+    // (evalRunner.ts's EVAL_ORG is hardcoded), and the backend now 403s any
+    // other org's caller on every /eval-runs route (closing what used to be
+    // a real cross-tenant exposure, not just a missing nav gate — see
+    // evalRuns.ts's requireOrgDefault()).
+    ...(canViewPlatform
+      ? [
+          {
+            key: "eval",
+            label: "Eval report",
+            active: view.name === "eval",
+            onClick: () => setView({ name: "eval" as const }),
+          },
+        ]
+      : []),
     // New: audit trail (GET /agent-runs list) — same runs:view permission
     // tier as the per-run trace every ticket detail already exposes, so
     // this is available to every role that can already reach a ticket.
@@ -85,6 +97,19 @@ export function AuthenticatedApp({ session, onLogout }: { session: Session; onLo
       active: view.name === "audit",
       onClick: () => setView({ name: "audit" }),
     },
+    // New: RAG-pipeline visibility — the resolution-embedding index itself.
+    // org_default only (canViewPlatform), same reasoning as Eval report
+    // above: the backend independently 403s any other org (embeddings.ts).
+    ...(canViewPlatform
+      ? [
+          {
+            key: "embeddings",
+            label: "Embeddings",
+            active: view.name === "embeddings",
+            onClick: () => setView({ name: "embeddings" as const }),
+          },
+        ]
+      : []),
     ...(canViewQuality
       ? [
           {
@@ -135,7 +160,8 @@ export function AuthenticatedApp({ session, onLogout }: { session: Session; onLo
       )}
       {view.name === "documents" && <Documents role={session.role} />}
       {view.name === "audit" && <AuditTrail />}
-      {view.name === "eval" && <EvalReport role={session.role} />}
+      {view.name === "embeddings" && canViewPlatform && <EmbeddingIndex />}
+      {view.name === "eval" && canViewPlatform && <EvalReport role={session.role} />}
       {view.name === "quality" && canViewQuality && <QualityDashboard />}
       {view.name === "admin" && session.role === "admin" && <Admin orgId={session.orgId} />}
       {view.name === "platform" && canViewPlatform && <PlatformSupport />}

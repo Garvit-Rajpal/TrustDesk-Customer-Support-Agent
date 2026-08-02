@@ -342,6 +342,17 @@ export interface GuardrailCheckResult {
   detail?: string;
 }
 
+// RAG-pipeline visibility: what generateDraft()'s similarity search
+// (src/services/retrieval.ts) actually retrieved and fed into a given
+// draft's prompt as context — never a citable source, distinct from
+// retrieved_doc_ids (KB docs, which are citable).
+export interface SimilarResolutionMatch {
+  embedding_id: string;
+  ticket_id: string;
+  distance: number;
+  source_text: string;
+}
+
 export interface AgentRunTrace {
   run_id: string;
   ticket_id: string | null;
@@ -355,6 +366,7 @@ export interface AgentRunTrace {
   model_name: string | null;
   latency_ms: number | null;
   created_at: string;
+  similar_resolutions: SimilarResolutionMatch[];
 }
 
 // Audit trail (AuditTrail.tsx): the lightweight row shape GET /agent-runs
@@ -380,6 +392,23 @@ export interface AgentRunSummary {
   order_status: string | null;
   order_total: string | null;
   order_currency: string | null;
+  similar_resolutions_count: number;
+}
+
+// RAG-pipeline visibility: the embedding index itself (GET /embeddings,
+// org_default only) — every row ingestResolutionEmbedding() has written to
+// ticket_resolution_embeddings, most recent first.
+export interface ResolutionEmbeddingSummary {
+  embedding_id: string;
+  ticket_id: string;
+  draft_id: string;
+  category: string;
+  resolution_type: string;
+  source_text: string;
+  created_at: string;
+  ticket_subject: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
 }
 
 // GET /documents and GET /documents/:docId return the same shape (both
@@ -522,6 +551,10 @@ export const api = {
 
   getAgentRun: (runId: string) => request<AgentRunTrace>("GET", `/agent-runs/${runId}`),
   listAgentRuns: () => request<{ runs: AgentRunSummary[] }>("GET", "/agent-runs"),
+  // RAG-pipeline visibility: org_default only — the backend 403s any other
+  // org's caller (src/api/routes/embeddings.ts).
+  listResolutionEmbeddings: () =>
+    request<{ embeddings: ResolutionEmbeddingSummary[] }>("GET", "/embeddings"),
 
   listDocuments: () => request<{ documents: KbDocument[] }>("GET", "/documents"),
   getDocument: (docId: string) => request<KbDocument>("GET", `/documents/${docId}`),
