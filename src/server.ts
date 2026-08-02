@@ -3,11 +3,13 @@ import http from "node:http";
 import { buildApp } from "./app.js";
 import { createModelAdapter } from "./adapters/createModelAdapter.js";
 import { createEmbeddingAdapter } from "./adapters/createEmbeddingAdapter.js";
+import { createEmailAdapter } from "./adapters/createEmailAdapter.js";
 import { attachCustomerChatServer } from "./ws/customerChatServer.js";
 
 const modelAdapter = createModelAdapter();
 const embeddingAdapter = createEmbeddingAdapter();
-const app = buildApp(modelAdapter, embeddingAdapter);
+const emailAdapter = createEmailAdapter();
+const app = buildApp(modelAdapter, embeddingAdapter, emailAdapter);
 
 // W17 (LLD_v4 §7): WS attachment needs the raw http.Server, which only this
 // file constructs — app.ts/the exported `app` every test imports stays

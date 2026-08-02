@@ -91,6 +91,25 @@ export function clearCustomerSession(): void {
   localStorage.removeItem(CUSTOMER_TICKET_ID_KEY);
 }
 
+// V5-23 (LLD_v5 §7, HLD_v5 ADR-29): returning-customer skip-to-chat check.
+// Decodes the JWT payload client-side (no signature check — the backend is
+// the actual authority; this is only a UX shortcut to avoid re-rendering a
+// verify form the stored token would immediately succeed past anyway) and
+// compares `exp` to now. Works identically for a manual-verify (1h) or
+// magic-link-derived (30d) token, since both share the same claims shape.
+export function hasValidCustomerSession(): boolean {
+  const token = getCustomerToken();
+  if (!token) return false;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return false;
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof decoded.exp === "number" && decoded.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken();
   const res = await fetch(path, {
@@ -338,6 +357,31 @@ export interface AgentRunTrace {
   created_at: string;
 }
 
+// Audit trail (AuditTrail.tsx): the lightweight row shape GET /agent-runs
+// (list) returns — deliberately missing tool_calls/rejected_output/
+// retrieved_doc_ids (see agentRunsRepo.ts's listAgentRuns) since those are
+// only needed one-at-a-time, via the existing getAgentRun()/AgentRunTrace
+// above, when a row is expanded.
+export interface AgentRunSummary {
+  run_id: string;
+  ticket_id: string | null;
+  run_type: string;
+  status: "completed" | "guardrail_blocked" | "failed";
+  guardrail_results: GuardrailCheckResult[];
+  model_provider: string | null;
+  model_name: string | null;
+  latency_ms: number | null;
+  created_at: string;
+  ticket_subject: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  order_id: string | null;
+  order_status: string | null;
+  order_total: string | null;
+  order_currency: string | null;
+}
+
 // GET /documents and GET /documents/:docId return the same shape (both
 // include full content — kbDocumentsRepo doesn't have a lighter summary
 // projection).
@@ -436,6 +480,11 @@ export interface CustomerVerifyResult {
   ticket_id?: string;
 }
 
+// V5-19/23 (LLD_v5 §6/§7, HLD_v5 ADR-29): mirrors CustomerVerifyResult's
+// shape exactly — a magic link ultimately mints the same CustomerTokenClaims,
+// just with a longer expiry (backend-side only, opaque to this client).
+export type CustomerMagicLinkResult = CustomerVerifyResult;
+
 export const api = {
   login: (username: string, password: string) =>
     request<LoginResult>("POST", "/auth/login", { username, password }),
@@ -472,6 +521,7 @@ export const api = {
   startEvalRun: () => request<{ eval_run_id: string }>("POST", "/eval-runs/start"),
 
   getAgentRun: (runId: string) => request<AgentRunTrace>("GET", `/agent-runs/${runId}`),
+  listAgentRuns: () => request<{ runs: AgentRunSummary[] }>("GET", "/agent-runs"),
 
   listDocuments: () => request<{ documents: KbDocument[] }>("GET", "/documents"),
   getDocument: (docId: string) => request<KbDocument>("GET", `/documents/${docId}`),
@@ -514,6 +564,19 @@ export const api = {
   // fine here since PortalVerify is reached outside any agent session.
   customerVerify: (input: CustomerVerifyInput) =>
     request<CustomerVerifyResult>("POST", "/customer-auth/verify", input),
+
+  // V5-19/23 (LLD_v5 §6/§7, HLD_v5 ADR-29): request always resolves 200 with
+  // {ok: true} regardless of match — the backend's non-enumeration guarantee
+  // means this call never throws for a "wrong" email, so callers should
+  // treat any resolved promise as "if that email matches, a link was sent."
+  customerMagicLinkRequest: (orgSlug: string, email: string, ticketId?: string) =>
+    request<{ ok: true }>("POST", "/customer-auth/magic-link/request", {
+      org_slug: orgSlug,
+      email,
+      ...(ticketId ? { ticket_id: ticketId } : {}),
+    }),
+  customerMagicLinkConsume: (token: string) =>
+    request<CustomerMagicLinkResult>("POST", "/customer-auth/magic-link/consume", { token }),
 
   // V3-4 (LLD_v3 §3, HLD_v3 ADR-15): human takeover — bypasses the draft
   // pipeline entirely.

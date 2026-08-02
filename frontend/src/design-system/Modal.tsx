@@ -1,16 +1,24 @@
 import type { ReactNode } from "react";
 
-// V3-8 (LLD_v3 §6): generic modal — first consumer is the platform-support
-// consent toggle (V3-9's Admin page), kept generic since dashboard/other
-// confirmations will likely reuse it too.
+const MAX_WIDTH: Record<"md" | "lg", string> = {
+  md: "max-w-md",
+  lg: "max-w-2xl",
+};
+
+// V3-8 (LLD_v3 §6): generic modal. `size` defaults to "md" (unchanged from
+// before this prop existed) — "lg" is for content that needs more room,
+// e.g. AuditTrail.tsx's TracePanel, which renders guardrail-check lists and
+// full JSON blobs that "md" (28rem) crowds badly.
 export function Modal({
   title,
   onClose,
   children,
+  size = "md",
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  size?: "md" | "lg";
 }) {
   return (
     <div
@@ -18,7 +26,7 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-ds-lg bg-ds-surface p-6 shadow-lg"
+        className={`w-full ${MAX_WIDTH[size]} max-h-[85vh] overflow-y-auto rounded-ds-lg bg-ds-surface p-6 shadow-lg`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">

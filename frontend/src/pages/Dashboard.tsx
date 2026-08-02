@@ -70,19 +70,25 @@ export function Dashboard() {
   }));
   const totalTickets = statusRows.reduce((sum, r) => sum + r.count, 0);
 
+  const kpiTiles = [
+    { label: "Total tickets", value: String(totalTickets) },
+    { label: "Draft acceptance", value: formatPercent(summary.quality.draft_acceptance_rate) },
+    { label: "Action approval", value: formatPercent(summary.quality.action_approval_rate) },
+    {
+      label: "Avg rating",
+      value: summary.quality.avg_rating === null ? "no data" : `${summary.quality.avg_rating.toFixed(2)}/5`,
+    },
+  ];
+
   return (
     <div>
       <h2 className="text-xl font-semibold text-ds-text">Dashboard</h2>
-      <p className="muted">A snapshot of your ticket queue and AI quality.</p>
+      <p className="muted mt-1">A snapshot of your ticket queue and AI quality.</p>
 
-      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <MetricTile label="Total tickets" value={String(totalTickets)} />
-        <MetricTile label="Draft acceptance" value={formatPercent(summary.quality.draft_acceptance_rate)} />
-        <MetricTile label="Action approval" value={formatPercent(summary.quality.action_approval_rate)} />
-        <MetricTile
-          label="Avg rating"
-          value={summary.quality.avg_rating === null ? "no data" : `${summary.quality.avg_rating.toFixed(2)}/5`}
-        />
+      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {kpiTiles.map((tile, i) => (
+          <MetricTile key={tile.label} label={tile.label} value={tile.value} style={{ animationDelay: `${i * 70}ms` }} />
+        ))}
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -149,8 +155,13 @@ export function Dashboard() {
         <h3 className="text-sm font-semibold text-ds-text">Latest eval run</h3>
         {summary.eval_summary.available ? (
           <div className="mt-2 flex flex-wrap gap-4">
-            {Object.entries(summary.eval_summary.metrics).map(([key, value]) => (
-              <MetricTile key={key} label={key.replace(/_/g, " ")} value={formatPercent(value)} />
+            {Object.entries(summary.eval_summary.metrics).map(([key, value], i) => (
+              <MetricTile
+                key={key}
+                label={key.replace(/_/g, " ")}
+                value={formatPercent(value)}
+                style={{ animationDelay: `${i * 70}ms` }}
+              />
             ))}
           </div>
         ) : (

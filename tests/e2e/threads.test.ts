@@ -6,6 +6,7 @@ import request from "supertest";
 import { app } from "../../src/app.js";
 import { pool, truncateAll } from "../../src/db/pool.js";
 import { runSeed } from "../../src/db/seed.js";
+import { PIPELINE_FAILURE_TEXT } from "../../src/services/pipelineFailureTemplate.js";
 
 describe("V2-4 threads + status machine", () => {
   let token: string;
@@ -51,10 +52,22 @@ describe("V2-4 threads + status machine", () => {
       const res = await request(app)
         .get(`/tickets/${created.body.data.ticket_id}/messages`)
         .set("Authorization", `Bearer ${token}`);
-      expect(res.body.data.messages).toHaveLength(2);
+      // A freshly nanoid-generated ticket_id has no matching entry in this
+      // app's default MockModelAdapter scenarios (DEFAULT_MODEL_SCENARIOS
+      // only scripts the seeded tkt_9001-9008 ids), so its auto-triggered
+      // triage fails closed here the same way it would for any real,
+      // freshly-created ticket — which is exactly what
+      // pipelineFailureFallback.ts's regression test targets: a 3rd,
+      // persisted "we're having trouble..." message, not silence.
+      expect(res.body.data.messages).toHaveLength(3);
       expect(res.body.data.messages[0]).toMatchObject({ direction: "inbound", author: "customer" });
       expect(res.body.data.messages[0].body).toBe("Hello there.");
       expect(res.body.data.messages[1]).toMatchObject({ direction: "outbound", author: "system" });
+      expect(res.body.data.messages[2]).toMatchObject({
+        direction: "outbound",
+        author: "system",
+        body: PIPELINE_FAILURE_TEXT,
+      });
     });
   });
 

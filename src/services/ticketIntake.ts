@@ -20,6 +20,7 @@ import { greetingTemplate } from "./ticketGreeting.js";
 import { runTriage } from "./triage.js";
 import { generateDraft, evaluateAutoSend, type DraftOutcome } from "./draft.js";
 import { sendDraft } from "./ticketThread.js";
+import { postPipelineFailureFallback } from "./pipelineFailureFallback.js";
 
 export type CreateTicketOutcome =
   | { kind: "invalid_customer"; customer_id: string }
@@ -98,7 +99,17 @@ export async function runIntakePipeline(
     }
   } catch {
     // Leave pipeline at its last-known-true state; the caller's own write
-    // already succeeded and must be reported as such.
+    // already succeeded and must be reported as such. If triage itself had
+    // failed, runTriage() already posted its own fallback message and
+    // advanced ticket status internally (see triage.ts) — this only needs
+    // to cover an exception *after* a successful triage (draft generation
+    // or auto-send throwing unexpectedly, not the graceful guardrail_blocked
+    // fallback generateDraft() already returns on its own parse failure),
+    // which would otherwise leave the same silent "customer got nothing"
+    // gap this fix closes.
+    if (pipeline.triage) {
+      await postPipelineFailureFallback(ctx, ticket.ticket_id);
+    }
   }
   return pipeline;
 }

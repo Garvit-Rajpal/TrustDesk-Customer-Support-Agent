@@ -14,6 +14,7 @@ import { updateTicketStatus, updateTicketTriage } from "../db/repos/ticketsRepo.
 import { getLatestInboundMessage } from "../db/repos/ticketMessagesRepo.js";
 import { pipelineEventBus } from "./events/pipelineEventBus.js";
 import { canTransition } from "./ticketStatus.js";
+import { postPipelineFailureFallback } from "./pipelineFailureFallback.js";
 
 export type TriageOutcome =
   | { status: "completed"; result: TriageResult; runId: string }
@@ -81,20 +82,31 @@ export async function runTriage(
   await pipelineEventBus.emitStage(runId, "triage", "started");
 
   // LLD §4.6: "zod parse (1 retry on parse failure, then run status: failed)".
+  // The adapter call itself is also wrapped here (not just the JSON it
+  // returns) — a thrown error (adapter network failure, or in dev with
+  // MODEL_TIER=mock, no scenario registered for a freshly-created ticket)
+  // is treated identically to an invalid response: it consumes a retry
+  // attempt, and its message is captured into `raw` so the eventual failed
+  // agent_runs row's `rejected_output` still explains what happened,
+  // instead of the exception propagating uncaught out of this function.
   for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
-    const response = await modelAdapter.complete({
-      // Suffixed so a shared MockModelAdapter can serve both triage and
-      // draft calls for the same ticket without one queue's responses
-      // leaking into the other's call count.
-      scenario: `${ticket.ticket_id}:triage`,
-      systemPrompt: TRIAGE_SYSTEM_PROMPT,
-      userPrompt,
-      responseFormat: "json",
-    });
-    raw = response.content;
-    modelProvider = response.provider;
-    modelName = response.model;
-    parsed = tryParseTriage(raw);
+    try {
+      const response = await modelAdapter.complete({
+        // Suffixed so a shared MockModelAdapter can serve both triage and
+        // draft calls for the same ticket without one queue's responses
+        // leaking into the other's call count.
+        scenario: `${ticket.ticket_id}:triage`,
+        systemPrompt: TRIAGE_SYSTEM_PROMPT,
+        userPrompt,
+        responseFormat: "json",
+      });
+      raw = response.content;
+      modelProvider = response.provider;
+      modelName = response.model;
+      parsed = tryParseTriage(raw);
+    } catch (err) {
+      raw = err instanceof Error ? err.message : String(err);
+    }
   }
 
   const guardrailResults = [...l1Results, l2Result];
@@ -102,6 +114,34 @@ export async function runTriage(
 
   if (!parsed) {
     await pipelineEventBus.emitStage(runId, "triage", "failed");
+
+    // A failed triage still needs to move the ticket forward the same two
+    // steps a successful triage + sent draft/reply would — otherwise a
+    // ticket stays stuck forever, and the customer's *next* message gets
+    // silently rejected by receiveCustomerMessage()'s canTransition guard
+    // (LLD_v2 §5), with no feedback at all. Step 1 mirrors the identical
+    // "someone needs to look at this" advance the success path applies
+    // below (open/customer_replied → in_progress). Step 2 mirrors what
+    // sendDraft()/sendManualReply() apply after actually sending something
+    // to the customer (in_progress → awaiting_customer) — since the
+    // fallback message posted below *is* exactly that, a real reply, this
+    // must reach the same status a normal sent reply would, or the
+    // customer stays just as locked out as before this fix.
+    let currentStatus: string = ticket.status;
+    if (canTransition(currentStatus, "in_progress")) {
+      await updateTicketStatus(ctx, ticket.ticket_id, "in_progress");
+      currentStatus = "in_progress";
+    }
+    if (canTransition(currentStatus, "awaiting_customer")) {
+      await updateTicketStatus(ctx, ticket.ticket_id, "awaiting_customer");
+    }
+
+    // Deterministic fallback (pipelineFailureFallback.ts), mirroring the
+    // guardrail L3 fail-closed template (invariant #5) and
+    // ticketGreeting.ts's greeting — a real, persisted thread message the
+    // customer sees even on reload, not just an ephemeral WS status frame.
+    await postPipelineFailureFallback(ctx, ticket.ticket_id);
+
     await insertAgentRun(ctx, {
       run_id: runId,
       ticket_id: ticket.ticket_id,

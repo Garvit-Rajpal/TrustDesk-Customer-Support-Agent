@@ -81,3 +81,58 @@ export async function getAgentRunById(ctx: OrgContext, runId: string): Promise<A
   );
   return rows[0] ?? null;
 }
+
+export interface AgentRunListRow {
+  run_id: string;
+  ticket_id: string | null;
+  run_type: string;
+  status: string;
+  guardrail_results: unknown;
+  model_provider: string | null;
+  model_name: string | null;
+  latency_ms: number | null;
+  created_at: string;
+  ticket_subject: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  order_id: string | null;
+  order_status: string | null;
+  order_total: string | null;
+  order_currency: string | null;
+}
+
+// New audit-trail listing (frontend AuditTrail.tsx): every agent_runs row
+// for the caller's own org, most recent first, joined out to its ticket's
+// customer + order so a reviewer can see who/what a run was actually
+// about without a second lookup — the single-run GET /agent-runs/:runId
+// (getAgentRunById above) already covers full per-run detail (tool_calls,
+// rejected_output, retrieved_doc_ids), so this intentionally omits those
+// heavier fields to keep a many-row list light. LEFT JOINs throughout:
+// ticket_id is nullable on agent_runs, and a ticket's order_id is nullable
+// too (LLD §2), so a run with no ticket or a ticket with no order still
+// returns a row rather than being silently dropped.
+export async function listAgentRuns(ctx: OrgContext, limit = 200): Promise<AgentRunListRow[]> {
+  const { rows } = await pool.query(
+    `SELECT
+       ar.run_id, ar.ticket_id, ar.run_type, ar.status, ar.guardrail_results,
+       ar.model_provider, ar.model_name, ar.latency_ms, ar.created_at::text,
+       t.subject AS ticket_subject,
+       t.customer_id,
+       c.name AS customer_name,
+       c.email AS customer_email,
+       t.order_id,
+       o.status AS order_status,
+       o.total::text AS order_total,
+       o.currency AS order_currency
+     FROM agent_runs ar
+     LEFT JOIN tickets t ON ar.ticket_id = t.ticket_id
+     LEFT JOIN customers c ON t.customer_id = c.customer_id
+     LEFT JOIN orders o ON t.order_id = o.order_id
+     WHERE ar.org_id = $1
+     ORDER BY ar.created_at DESC
+     LIMIT $2`,
+    [ctx.org_id, limit]
+  );
+  return rows;
+}

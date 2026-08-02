@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, setOrg, setRole, setToken, setWelcomeSeenAt, type Role, type Vertical } from "../api.js";
+import { GradientBlobBackground } from "../design-system/GradientBlobBackground.js";
 
 const VERTICALS: { value: Vertical; label: string }[] = [
   { value: "retail_ecommerce", label: "Retail & e-commerce" },
@@ -59,14 +60,7 @@ export function Signup({
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ds-bg px-4 py-12">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 animate-blob rounded-full bg-ds-accent/20 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 animate-blob rounded-full bg-status-info-fg/20 blur-3xl [animation-delay:-6s]"
-      />
+      <GradientBlobBackground variant="auth" />
 
       <div className="relative w-full max-w-md animate-fade-in-up rounded-ds-lg border border-ds-border bg-ds-surface/90 p-8 shadow-xl backdrop-blur">
         <Link to="/" className="text-sm text-ds-text-muted transition-colors hover:text-ds-text">
@@ -77,61 +71,71 @@ export function Signup({
           You'll be signed in immediately as the org's admin — pick your own credentials below.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <label className="block text-sm font-medium text-ds-text">
-            Organization name
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
-            />
-          </label>
-          <label className="block text-sm font-medium text-ds-text">
-            Support vertical
-            <select
-              value={vertical}
-              onChange={(e) => setVertical(e.target.value as Vertical)}
-              className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
-            >
-              {VERTICALS.map((v) => (
-                <option key={v.value} value={v.value}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm font-medium text-ds-text">
-            Your name
-            <input
-              value={adminDisplayName}
-              onChange={(e) => setAdminDisplayName(e.target.value)}
-              required
-              className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
-            />
-          </label>
-          <label className="block text-sm font-medium text-ds-text">
-            Admin username
-            <input
-              value={adminUsername}
-              onChange={(e) => setAdminUsername(e.target.value)}
-              required
-              className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
-            />
-          </label>
-          <label className="block text-sm font-medium text-ds-text">
-            Admin password
-            <input
-              type="password"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              minLength={8}
-              required
-              className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
-            />
-          </label>
+        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+          <div className="animate-scale-in">
+            <label className="block text-sm font-medium text-ds-text">
+              Organization name
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
+              />
+            </label>
+          </div>
+          <div className="animate-scale-in [animation-delay:70ms]">
+            <label className="block text-sm font-medium text-ds-text">
+              Support vertical
+              <select
+                value={vertical}
+                onChange={(e) => setVertical(e.target.value as Vertical)}
+                className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
+              >
+                {VERTICALS.map((v) => (
+                  <option key={v.value} value={v.value}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="animate-scale-in [animation-delay:140ms]">
+            <label className="block text-sm font-medium text-ds-text">
+              Your name
+              <input
+                value={adminDisplayName}
+                onChange={(e) => setAdminDisplayName(e.target.value)}
+                required
+                className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
+              />
+            </label>
+          </div>
+          <div className="animate-scale-in [animation-delay:210ms]">
+            <label className="block text-sm font-medium text-ds-text">
+              Admin username
+              <input
+                value={adminUsername}
+                onChange={(e) => setAdminUsername(e.target.value)}
+                required
+                className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
+              />
+            </label>
+          </div>
+          <div className="animate-scale-in [animation-delay:280ms]">
+            <label className="block text-sm font-medium text-ds-text">
+              Admin password
+              <input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                minLength={8}
+                required
+                className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
+              />
+            </label>
+          </div>
 
-          {error && <p className="animate-fade-in text-sm text-status-danger-fg">{error}</p>}
+          {error && <p className="animate-scale-in text-sm text-status-danger-fg">{error}</p>}
 
           <button
             type="submit"

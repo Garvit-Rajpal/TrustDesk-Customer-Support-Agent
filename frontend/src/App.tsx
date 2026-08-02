@@ -18,6 +18,7 @@ import { Landing } from "./pages/Landing.js";
 import { Signup } from "./pages/Signup.js";
 import { PortalVerify } from "./portal/PortalVerify.js";
 import { PortalChat } from "./portal/PortalChat.js";
+import { PortalMagicLinkConsume } from "./portal/PortalMagicLinkConsume.js";
 
 // V3-1/V3-8 (HLD_v3 ADR-14/ADR-18, LLD_v3 §6): a genuine public tree now
 // exists (/, /signup, /login) alongside the authenticated app, so plain
@@ -65,6 +66,9 @@ export default function App() {
             — no `session` gating, since a portal visitor is never an agent. */}
         <Route path="/portal" element={<Navigate to="/portal/verify" replace />} />
         <Route path="/portal/verify" element={<PortalVerify />} />
+        {/* V5-23 (LLD_v5 §7, HLD_v5 ADR-29): the emailed magic-link URL's
+            destination — reads ?token= and auto-consumes on mount. */}
+        <Route path="/portal/magic-link" element={<PortalMagicLinkConsume />} />
         <Route path="/portal/chat" element={<PortalChat />} />
         <Route
           path="/login"

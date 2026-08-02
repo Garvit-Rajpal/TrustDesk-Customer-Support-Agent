@@ -16,6 +16,7 @@ import { DEFAULT_MODEL_SCENARIOS } from "../../src/adapters/defaultMockScenarios
 import { pool, truncateAll } from "../../src/db/pool.js";
 import { runSeed } from "../../src/db/seed.js";
 import { signCustomerToken, signToken } from "../../src/services/tokens.js";
+import { PIPELINE_FAILURE_TEXT } from "../../src/services/pipelineFailureTemplate.js";
 
 describe("customerChatServer (W17/V4-22)", () => {
   let baseUrl: string;
@@ -310,6 +311,44 @@ describe("customerChatServer (W17/V4-22)", () => {
         const humanReply = messageFrames.find((f) => f.body === "A human agent here — following up personally.");
         expect(humanReply).toBeDefined();
         expect(humanReply.direction).toBe("outbound");
+      });
+    });
+
+    // Regression: reproduces the exact bug a customer hit live — creating a
+    // ticket via chat with no matching triage scenario (e.g. MODEL_TIER=mock
+    // and a freshly-created ticket_id) used to leave the customer with zero
+    // feedback, and permanently unable to send a follow-up message at all
+    // (silently rejected by the ticket-status guard). Now: a persisted
+    // fallback message is pushed live, and a follow-up message succeeds.
+    it("a failed pipeline on a brand-new chat-created ticket pushes a fallback message, and a follow-up message is no longer silently dropped", async () => {
+      const adapter = new MockModelAdapter({}); // no scenario for any ticket_id — every triage call fails closed
+      await withChatServer(adapter, async (baseUrl) => {
+        const token = signCustomerToken({ customer_id: "cus_1002", org_id: "org_default", kind: "customer" });
+        const ws = new WebSocket(`${baseUrl}?token=${token}`);
+        const received: any[] = [];
+        ws.on("message", (data) => received.push(JSON.parse(data.toString())));
+        await waitForOpen(ws);
+
+        ws.send(JSON.stringify({ body: "Hello" }));
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const fallback = received.find((f) => f.type === "message" && f.body === PIPELINE_FAILURE_TEXT);
+        expect(fallback).toBeDefined();
+        expect(fallback.direction).toBe("outbound");
+        expect(fallback.author).toBe("system");
+
+        // Previously: this second message would be silently dropped
+        // (ticket stuck at "open") — no frame of any kind would arrive.
+        // Now: the ticket already advanced to in_progress after the first
+        // failure, so this is a legal receiveCustomerMessage() transition,
+        // triage runs again, fails again, and posts its own fallback too —
+        // proving the message was actually *processed*, not dropped.
+        ws.send(JSON.stringify({ body: "Where are you?" }));
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        ws.close();
+
+        const allFallbacks = received.filter((f) => f.type === "message" && f.body === PIPELINE_FAILURE_TEXT);
+        expect(allFallbacks).toHaveLength(2);
       });
     });
   });

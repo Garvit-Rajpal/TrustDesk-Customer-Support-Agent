@@ -63,3 +63,22 @@ export const CustomerVerifyRequest = z
     message: "Exactly one of order_id or ticket_id must be provided",
   });
 export type CustomerVerifyRequest = z.infer<typeof CustomerVerifyRequest>;
+
+// V5-19 (LLD_v5 §6, HLD_v5 ADR-29): POST /customer-auth/magic-link/request's
+// body. ticket_id is optional (unlike CustomerVerifyRequest's exactly-one-of
+// order_id/ticket_id) — a magic link can scope to a ticket if the customer
+// followed one in from a specific thread, but a bare org+email is enough to
+// request a link at all.
+export const MagicLinkRequest = z.object({
+  org_slug: z.string().min(1),
+  email: z.string().email(),
+  ticket_id: z.string().optional(),
+});
+export type MagicLinkRequest = z.infer<typeof MagicLinkRequest>;
+
+// V5-20: POST /customer-auth/magic-link/consume's body — just the opaque
+// token from the emailed link.
+export const MagicLinkConsumeRequest = z.object({
+  token: z.string().min(1),
+});
+export type MagicLinkConsumeRequest = z.infer<typeof MagicLinkConsumeRequest>;

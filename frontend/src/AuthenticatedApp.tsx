@@ -4,6 +4,7 @@ import { Queue } from "./components/Queue.js";
 import { TicketView } from "./components/TicketView.js";
 import { EvalReport } from "./components/EvalReport.js";
 import { Documents } from "./components/Documents.js";
+import { AuditTrail } from "./components/AuditTrail.js";
 import { Admin } from "./components/Admin.js";
 import { QualityDashboard } from "./components/QualityDashboard.js";
 import { PlatformSupport } from "./components/PlatformSupport.js";
@@ -27,6 +28,7 @@ type View =
   | { name: "ticket"; ticketId: string }
   | { name: "eval" }
   | { name: "documents" }
+  | { name: "audit" }
   | { name: "quality" }
   | { name: "admin" }
   | { name: "platform" };
@@ -73,6 +75,15 @@ export function AuthenticatedApp({ session, onLogout }: { session: Session; onLo
       label: "Eval report",
       active: view.name === "eval",
       onClick: () => setView({ name: "eval" }),
+    },
+    // New: audit trail (GET /agent-runs list) — same runs:view permission
+    // tier as the per-run trace every ticket detail already exposes, so
+    // this is available to every role that can already reach a ticket.
+    {
+      key: "audit",
+      label: "Audit trail",
+      active: view.name === "audit",
+      onClick: () => setView({ name: "audit" }),
     },
     ...(canViewQuality
       ? [
@@ -123,6 +134,7 @@ export function AuthenticatedApp({ session, onLogout }: { session: Session; onLo
         <TicketView ticketId={view.ticketId} onBack={() => setView({ name: "queue" })} role={session.role} />
       )}
       {view.name === "documents" && <Documents role={session.role} />}
+      {view.name === "audit" && <AuditTrail />}
       {view.name === "eval" && <EvalReport role={session.role} />}
       {view.name === "quality" && canViewQuality && <QualityDashboard />}
       {view.name === "admin" && session.role === "admin" && <Admin orgId={session.orgId} />}

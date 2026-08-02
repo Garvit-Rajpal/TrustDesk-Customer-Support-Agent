@@ -25,4 +25,6 @@ export const newOrgId = () => `org_${nanoid()}`;
 export const newCustomerId = () => `cus_${nanoid()}`;
 // V4-11 (LLD_v4 §1/§5): ticket_resolution_embeddings row IDs.
 export const newEmbeddingId = () => `emb_${nanoid()}`;
+// V5-17 (LLD_v5 §6, HLD_v5 ADR-29): customer_magic_links row IDs.
+export const newMagicLinkId = () => `mlk_${nanoid()}`;
 

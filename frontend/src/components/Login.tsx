@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, setOrg, setRole, setToken, setWelcomeSeenAt, type Role } from "../api.js";
+import { GradientBlobBackground } from "../design-system/GradientBlobBackground.js";
 
 // V3-9 follow-up (LLD_v3 §6, HLD_v3 ADR-18): brought onto the same
 // gradient/card language as Landing/Signup — no functional change from the
@@ -37,14 +38,7 @@ export function Login({
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ds-bg px-4">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 animate-blob rounded-full bg-ds-accent/20 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 animate-blob rounded-full bg-status-info-fg/20 blur-3xl [animation-delay:-6s]"
-      />
+      <GradientBlobBackground variant="auth" />
 
       <div className="relative w-full max-w-sm animate-fade-in-up rounded-ds-lg border border-ds-border bg-ds-surface/90 p-8 shadow-xl backdrop-blur">
         <Link to="/" className="text-sm text-ds-text-muted transition-colors hover:text-ds-text">
@@ -57,31 +51,35 @@ export function Login({
           </div>
           <h1 className="text-2xl font-bold text-ds-text">TrustDesk</h1>
         </div>
-        <p className="mt-2 text-sm text-ds-text-muted">Sign in to your workspace.</p>
+        <p className="mt-2 text-sm text-ds-text-muted">Welcome back — sign in to your workspace.</p>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <label className="block text-sm font-medium text-ds-text">
-            Username
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoFocus
-              required
-              className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
-            />
-          </label>
-          <label className="block text-sm font-medium text-ds-text">
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
-            />
-          </label>
+        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+          <div className="animate-scale-in">
+            <label className="block text-sm font-medium text-ds-text">
+              Username
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoFocus
+                required
+                className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
+              />
+            </label>
+          </div>
+          <div className="animate-scale-in [animation-delay:80ms]">
+            <label className="block text-sm font-medium text-ds-text">
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="mt-1 w-full rounded-ds-md border border-ds-border px-3 py-2 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ds-accent/40"
+              />
+            </label>
+          </div>
 
-          {error && <p className="animate-fade-in text-sm text-status-danger-fg">{error}</p>}
+          {error && <p className="animate-scale-in text-sm text-status-danger-fg">{error}</p>}
 
           <button
             type="submit"

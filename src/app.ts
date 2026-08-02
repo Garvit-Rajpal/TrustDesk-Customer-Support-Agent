@@ -14,7 +14,7 @@ import { customersRouter } from "./api/routes/customers.js";
 import { platformRouter } from "./api/routes/platform.js";
 import { dashboardRouter } from "./api/routes/dashboard.js";
 import { signupRouter } from "./api/routes/signup.js";
-import { customerAuthRouter } from "./api/routes/customerAuth.js";
+import { buildCustomerAuthRouter } from "./api/routes/customerAuth.js";
 import { authMiddleware } from "./api/middleware/auth.js";
 import { tenancyMiddleware } from "./api/middleware/tenancy.js";
 import { errorHandler } from "./api/middleware/errors.js";
@@ -23,6 +23,8 @@ import { MockModelAdapter } from "./adapters/mock.js";
 import { DEFAULT_MODEL_SCENARIOS } from "./adapters/defaultMockScenarios.js";
 import type { EmbeddingAdapter } from "./adapters/embeddingAdapter.js";
 import { MockEmbeddingAdapter } from "./adapters/mockEmbedding.js";
+import type { EmailAdapter } from "./adapters/emailAdapter.js";
+import { MockEmailAdapter } from "./adapters/mockEmail.js";
 
 // Single source of truth for route wiring, parameterized on the AI adapter
 // (ADR-3). server.ts uses this with createModelAdapter() (live OpenRouter
@@ -32,7 +34,11 @@ import { MockEmbeddingAdapter } from "./adapters/mockEmbedding.js";
 // same guarantee to embeddings: embeddingAdapter defaults to
 // MockEmbeddingAdapter, so every test's resolveTicket() ingestion call
 // stays local/in-memory too.
-export function buildApp(modelAdapter: ModelAdapter, embeddingAdapter: EmbeddingAdapter = new MockEmbeddingAdapter()): Express {
+export function buildApp(
+  modelAdapter: ModelAdapter,
+  embeddingAdapter: EmbeddingAdapter = new MockEmbeddingAdapter(),
+  emailAdapter: EmailAdapter = new MockEmailAdapter()
+): Express {
   const app = express();
 
   app.use(express.json());
@@ -44,7 +50,11 @@ export function buildApp(modelAdapter: ModelAdapter, embeddingAdapter: Embedding
   // W17 (LLD_v4 §7, HLD_v4 ADR-23): public, unauthenticated end-customer
   // ownership verification — same public tier as /signup, before
   // authMiddleware. Issues a CustomerToken, never an agent TokenClaims.
-  app.use("/customer-auth", customerAuthRouter);
+  // V5-19/20 (LLD_v5 §6, HLD_v5 ADR-29): also carries the magic-link
+  // request/consume routes, which is why this router now needs an
+  // EmailAdapter — defaults to MockEmailAdapter (see buildCustomerAuthRouter)
+  // so `export const app` below can never reach a real provider by omission.
+  app.use("/customer-auth", buildCustomerAuthRouter(emailAdapter));
 
   // ADR-4: every route below requires a valid JWT. V2-5: tenancyMiddleware
   // runs right after auth on every one of them, so req.orgContext is always
